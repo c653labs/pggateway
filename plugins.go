@@ -40,30 +40,30 @@ func NewPluginRegistry() PluginRegistry { return PluginRegistry{} }
 
 func (r PluginRegistry) LogSystem(fmt string, args ...interface{}) {
 	for _, p := range loggingPlugins {
-		p.LogSystem(fmt, args...)
+		go p.LogSystem(fmt, args...)
 	}
 }
 
 func (r PluginRegistry) LogNewSession(sess *Session) {
 	for _, p := range loggingPlugins {
-		p.LogNewSession(sess)
+		go p.LogNewSession(sess)
 	}
 }
 
 func (r PluginRegistry) LogSessionClosed(sess *Session, err error) {
 	for _, p := range loggingPlugins {
-		p.LogSessionClosed(sess, err)
+		go p.LogSessionClosed(sess, err)
 	}
 }
 
 func (r PluginRegistry) LogClientRequest(sess *Session, msg pgproto.ClientMessage) {
 	for _, p := range loggingPlugins {
-		p.LogClientRequest(sess, msg)
+		go p.LogClientRequest(sess, msg)
 	}
 }
 
 func (r PluginRegistry) LogServerResponse(sess *Session, msg pgproto.ServerMessage) {
 	for _, p := range loggingPlugins {
-		p.LogServerResponse(sess, msg)
+		go p.LogServerResponse(sess, msg)
 	}
 }
