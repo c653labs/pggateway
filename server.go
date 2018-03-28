@@ -20,7 +20,13 @@ func (s *Server) acceptConnections() error {
 			return err
 		}
 
-		go s.handleClient(conn)
+		go func() {
+			defer conn.Close()
+			err := s.handleClient(conn)
+			if err != nil {
+				log.Println(err)
+			}
+		}()
 	}
 }
 
@@ -46,34 +52,18 @@ func (s *Server) ListenUnix(addr string) error {
 	return s.acceptConnections()
 }
 
-func (s *Server) handleClient(conn net.Conn) {
-	defer conn.Close()
-	sess := NewSession(conn)
-
-	err := sess.Negotiate()
+func (s *Server) handleClient(client net.Conn) error {
+	server, err := net.Dial("tcp", "127.0.0.1:5432")
 	if err != nil {
-		log.Println(err)
-		return
+		return err
 	}
 
-	// TODO: Have this be real
-	//   - sess.startupMsg.User is the username
-	if !sess.ValidatePassword([]byte("test")) {
-		// TODO: Send error message
-		log.Println("password mismatch")
-		return
-	}
-
-	srv, err := net.Dial("tcp", "127.0.0.1:5432")
+	sess, err := NewSession(client, server)
 	if err != nil {
-		log.Println(err)
-		return
+		client.Close()
+		return err
 	}
-	defer srv.Close()
+	defer sess.Close()
 
-	err = sess.Proxy(srv)
-	if err != nil {
-		log.Println(err)
-		return
-	}
+	return sess.Handle()
 }
