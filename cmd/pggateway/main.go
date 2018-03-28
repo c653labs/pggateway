@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/c653labs/pggateway"
+	_ "github.com/c653labs/pggateway/plugins/logging"
 )
 
 func main() {

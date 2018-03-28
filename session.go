@@ -2,7 +2,6 @@ package pggateway
 
 import (
 	"fmt"
-	"log"
 	"net"
 
 	"github.com/c653labs/pgproto"
@@ -10,30 +9,34 @@ import (
 )
 
 type Session struct {
-	id       uuid.UUID
+	ID       string
+	User     []byte
+	Database []byte
+
 	client   net.Conn
 	server   net.Conn
-	user     []byte
-	database []byte
 	salt     []byte
 	password []byte
 
 	startup *pgproto.StartupMessage
+
+	plugins PluginRegistry
 }
 
-func NewSession(client net.Conn, server net.Conn) (*Session, error) {
+func NewSession(client net.Conn, server net.Conn, plugins PluginRegistry) (*Session, error) {
 	var err error
-	sess := &Session{
-		client: client,
-		server: server,
-		salt:   generateSalt(),
-	}
-	sess.id, err = uuid.NewV4()
+	id, err := uuid.NewV4()
 	if err != nil {
 		return nil, err
 	}
 
-	return sess, nil
+	return &Session{
+		ID:      id.String(),
+		client:  client,
+		server:  server,
+		salt:    generateSalt(),
+		plugins: plugins,
+	}, nil
 }
 
 func (s *Session) Close() {
@@ -43,7 +46,7 @@ func (s *Session) Close() {
 }
 
 func (s *Session) String() string {
-	return fmt.Sprintf("Session<ID=%#v, User=%#v, Database=%#v>", s.id.String(), string(s.user), string(s.database))
+	return fmt.Sprintf("Session<ID=%#v, User=%#v, Database=%#v>", s.ID, string(s.User), string(s.Database))
 }
 
 func (s *Session) Handle() error {
@@ -58,7 +61,7 @@ func (s *Session) Handle() error {
 		return err
 	}
 
-	return s.Proxy()
+	return s.proxy()
 }
 
 func (s *Session) getUserPassword() (*pgproto.AuthenticationRequest, *pgproto.PasswordMessage, error) {
@@ -71,7 +74,7 @@ func (s *Session) getUserPassword() (*pgproto.AuthenticationRequest, *pgproto.Pa
 		return nil, nil, err
 	}
 
-	msg, err := pgproto.ParseClientMessage(s.client)
+	msg, err := s.parseClientMessage()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -86,7 +89,7 @@ func (s *Session) getUserPassword() (*pgproto.AuthenticationRequest, *pgproto.Pa
 }
 
 func (s *Session) parseStartupMessage() (*pgproto.StartupMessage, error) {
-	msg, err := pgproto.ParseClientMessage(s.client)
+	msg, err := s.parseClientMessage()
 	if err != nil {
 		return nil, err
 	}
@@ -94,11 +97,11 @@ func (s *Session) parseStartupMessage() (*pgproto.StartupMessage, error) {
 	switch m := msg.(type) {
 	case *pgproto.StartupMessage:
 		var ok bool
-		if s.user, ok = m.Options["user"]; !ok {
+		if s.User, ok = m.Options["user"]; !ok {
 			return nil, fmt.Errorf("no username sent with startup message")
 		}
 
-		if s.database, ok = m.Options["database"]; !ok {
+		if s.Database, ok = m.Options["database"]; !ok {
 			return nil, fmt.Errorf("no database name sent with startup message")
 		}
 
@@ -113,7 +116,7 @@ func (s *Session) authenticateWithServer(password []byte) error {
 		return err
 	}
 
-	msg, err := pgproto.ParseServerMessage(s.server)
+	msg, err := s.parseServerMessage()
 	if err != nil {
 		return err
 	}
@@ -125,13 +128,13 @@ func (s *Session) authenticateWithServer(password []byte) error {
 
 	pwdMsg := &pgproto.PasswordMessage{}
 	// Use the salt from the server, not our session salt
-	pwdMsg.SetPassword(s.user, password, auth.Salt)
+	pwdMsg.SetPassword(s.User, password, auth.Salt)
 	err = s.writeClientMsg(pwdMsg)
 	if err != nil {
 		return err
 	}
 
-	msg, err = pgproto.ParseServerMessage(s.server)
+	msg, err = s.parseServerMessage()
 	if err != nil {
 		return err
 	}
@@ -152,11 +155,10 @@ func (s *Session) authenticateWithServer(password []byte) error {
 	}
 
 	err = s.writeServerMsg(auth)
-	log.Printf("%s %s %s - server - %s\r\n", s.id.String(), s.user, s.database, auth)
 	return err
 }
 
-func (s *Session) Proxy() error {
+func (s *Session) proxy() error {
 	// TODO: Use authentication plugin to get password
 	err := s.authenticateWithServer([]byte("test"))
 	if err != nil {
@@ -171,7 +173,7 @@ func (s *Session) Proxy() error {
 
 func (s *Session) proxyServerMessages(stop chan error) {
 	for {
-		msg, err := pgproto.ParseServerMessage(s.server)
+		msg, err := s.parseServerMessage()
 		if err != nil {
 			stop <- err
 			break
@@ -184,7 +186,7 @@ func (s *Session) proxyServerMessages(stop chan error) {
 
 func (s *Session) proxyClientMessages(stop chan error) {
 	for {
-		msg, err := pgproto.ParseClientMessage(s.client)
+		msg, err := s.parseClientMessage()
 		if err != nil {
 			stop <- err
 			break
@@ -200,15 +202,31 @@ func (s *Session) proxyClientMessages(stop chan error) {
 }
 
 func (s *Session) writeClientMsg(msg pgproto.ClientMessage) error {
-	// TODO: Pass through logging plugins
-	log.Printf("%s %s %s - client - %s\r\n", s.id.String(), s.user, s.database, msg)
 	_, err := msg.WriteTo(s.server)
 	return err
 }
 
 func (s *Session) writeServerMsg(msg pgproto.ServerMessage) error {
-	// TODO: Pass through logging plugins
-	log.Printf("%s %s %s - server - %s\r\n", s.id.String(), s.user, s.database, msg)
 	_, err := msg.WriteTo(s.client)
 	return err
+}
+
+func (s *Session) parseClientMessage() (pgproto.ClientMessage, error) {
+	msg, err := pgproto.ParseClientMessage(s.client)
+	if err != nil {
+		s.plugins.LogSystem("error parsing client message: %s")
+	} else {
+		s.plugins.LogClientRequest(s, msg)
+	}
+	return msg, err
+}
+
+func (s *Session) parseServerMessage() (pgproto.ServerMessage, error) {
+	msg, err := pgproto.ParseServerMessage(s.server)
+	if err != nil {
+		s.plugins.LogSystem("error parsing server message: %#v", err)
+	} else {
+		s.plugins.LogServerResponse(s, msg)
+	}
+	return msg, err
 }
