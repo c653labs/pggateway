@@ -21,7 +21,7 @@ func NewSession(conn net.Conn) *Session {
 }
 
 func (s *Session) Negotiate() error {
-	msg, err := pgproto.ParseMessage(s.conn)
+	msg, err := pgproto.ParseClientMessage(s.conn)
 	if err != nil {
 		return err
 	}
@@ -41,7 +41,7 @@ func (s *Session) handleStartup(startup *pgproto.StartupMessage) error {
 	s.startupMsg = startup
 
 	s.authReq = &pgproto.AuthenticationRequest{
-		Method: pgproto.AUTHENTICATION_MD5,
+		Method: pgproto.AuthenticationMethodMD5,
 		Salt:   []byte{'a', 'b', 'c', 'd'},
 	}
 	_, err := s.conn.Write(s.authReq.Encode())
@@ -49,7 +49,7 @@ func (s *Session) handleStartup(startup *pgproto.StartupMessage) error {
 		return err
 	}
 
-	msg, err := pgproto.ParseMessage(s.conn)
+	msg, err := pgproto.ParseClientMessage(s.conn)
 	if err != nil {
 		return err
 	}
@@ -69,7 +69,7 @@ func (s *Session) Proxy(srv net.Conn) error {
 		return err
 	}
 
-	msg, err := pgproto.ParseMessage(srv)
+	msg, err := pgproto.ParseServerMessage(srv)
 	if err != nil {
 		return err
 	}
@@ -85,7 +85,7 @@ func (s *Session) Proxy(srv net.Conn) error {
 		return err
 	}
 
-	msg, err = pgproto.ParseMessage(srv)
+	msg, err = pgproto.ParseServerMessage(srv)
 	if err != nil {
 		return err
 	}
@@ -94,38 +94,46 @@ func (s *Session) Proxy(srv net.Conn) error {
 		return fmt.Errorf("expected authentication request")
 	}
 
-	if ar.Method != pgproto.AUTHENTICATION_OK {
+	if ar.Method != pgproto.AuthenticationMethodOK {
 		return fmt.Errorf("expected successful authentication request")
 	}
 
 	ar.WriteTo(s.conn)
-	// go io.Copy(s.conn, srv)
-	// go io.Copy(srv, s.conn)
+	log.Printf("Response: %s\r\n", ar)
+
+	// Channel to listen for errors
+	stop := make(chan error)
 	go func(src io.Reader, dst io.Writer) {
 		for {
-			msg, err := pgproto.ParseMessage(src)
+			msg, err := pgproto.ParseClientMessage(src)
 			if err != nil {
-				log.Printf("%v\r\n", err)
+				stop <- err
 				break
 			}
 
 			log.Printf("Request: %s\r\n", msg)
 			msg.WriteTo(dst)
+
+			if _, ok := msg.(*pgproto.Termination); ok {
+				break
+			}
 		}
+		stop <- nil
 	}(s.conn, srv)
 
 	go func(src io.Reader, dst io.Writer) {
 		for {
-			msg, err := pgproto.ParseMessage(src)
+			msg, err := pgproto.ParseServerMessage(src)
 			if err != nil {
-				log.Printf("Response: %v\r\n", err)
+				stop <- err
 				break
 			}
 
 			log.Printf("Response: %s\r\n", msg)
 			msg.WriteTo(dst)
 		}
+		stop <- nil
 	}(srv, s.conn)
 
-	return nil
+	return <-stop
 }
