@@ -81,9 +81,11 @@ func (s *Session) setupSSLConnection() error {
 	}
 
 	// Upgrade the client connection to a TLS connection
-	s.client = tls.Server(s.client, &tls.Config{
+	client := tls.Server(s.client, &tls.Config{
 		Certificates: []tls.Certificate{cer},
 	})
+	client.Handshake()
+	s.client = client
 
 	return s.Handle()
 }
@@ -151,36 +153,40 @@ func (s *Session) authenticateWithServer(password []byte) error {
 	}
 	var auth *pgproto.AuthenticationRequest
 	var ok bool
-	if auth, ok = msg.(*pgproto.AuthenticationRequest); !ok {
+	auth, ok = msg.(*pgproto.AuthenticationRequest)
+	if !ok {
 		return fmt.Errorf("expected authentication request")
 	}
 
-	pwdMsg := &pgproto.PasswordMessage{}
-	// Use the salt from the server, not our session salt
-	pwdMsg.SetPassword(s.User, password, auth.Salt)
-	err = s.writeClientMsg(pwdMsg)
-	if err != nil {
-		return err
-	}
-
-	msg, err = s.parseServerMessage()
-	if err != nil {
-		return err
-	}
-
-	auth = nil
-	switch m := msg.(type) {
-	case *pgproto.AuthenticationRequest:
-		auth = m
-	case *pgproto.Error:
-		// TODO: Write generic cannot connect message?
-		return s.writeServerMsg(m)
-	default:
-		return fmt.Errorf("expected authentication request")
-	}
-
+	// Requires password
 	if auth.Method != pgproto.AuthenticationMethodOK {
-		return fmt.Errorf("expected successful authentication request")
+		pwdMsg := &pgproto.PasswordMessage{}
+		// Use the salt from the server, not our session salt
+		pwdMsg.SetPassword(s.User, password, auth.Salt)
+		err = s.writeClientMsg(pwdMsg)
+		if err != nil {
+			return err
+		}
+
+		msg, err = s.parseServerMessage()
+		if err != nil {
+			return err
+		}
+
+		auth = nil
+		switch m := msg.(type) {
+		case *pgproto.AuthenticationRequest:
+			auth = m
+		case *pgproto.Error:
+			// TODO: Write generic cannot connect message?
+			return s.writeServerMsg(m)
+		default:
+			return fmt.Errorf("expected authentication request: %#s", m)
+		}
+
+		if auth.Method != pgproto.AuthenticationMethodOK {
+			return fmt.Errorf("expected successful authentication request")
+		}
 	}
 
 	err = s.writeServerMsg(auth)
