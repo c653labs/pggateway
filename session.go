@@ -1,6 +1,7 @@
 package pggateway
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net"
 
@@ -56,12 +57,35 @@ func (s *Session) Handle() error {
 		return err
 	}
 
+	if s.startup.SSLRequest {
+		return s.setupSSLConnection()
+	}
+
 	_, _, err = s.getUserPassword()
 	if err != nil {
 		return err
 	}
 
 	return s.proxy()
+}
+
+func (s *Session) setupSSLConnection() error {
+	_, err := s.client.Write([]byte{'S'})
+	if err != nil {
+		return err
+	}
+
+	cer, err := tls.LoadX509KeyPair("server.crt", "server.key")
+	if err != nil {
+		return err
+	}
+
+	// Upgrade the client connection to a TLS connection
+	s.client = tls.Server(s.client, &tls.Config{
+		Certificates: []tls.Certificate{cer},
+	})
+
+	return s.Handle()
 }
 
 func (s *Session) getUserPassword() (*pgproto.AuthenticationRequest, *pgproto.PasswordMessage, error) {
@@ -96,6 +120,11 @@ func (s *Session) parseStartupMessage() (*pgproto.StartupMessage, error) {
 
 	switch m := msg.(type) {
 	case *pgproto.StartupMessage:
+		// Only extract options if this isn't an SSL request
+		if m.SSLRequest {
+			return m, nil
+		}
+
 		var ok bool
 		if s.User, ok = m.Options["user"]; !ok {
 			return nil, fmt.Errorf("no username sent with startup message")
@@ -214,7 +243,7 @@ func (s *Session) writeServerMsg(msg pgproto.ServerMessage) error {
 func (s *Session) parseClientMessage() (pgproto.ClientMessage, error) {
 	msg, err := pgproto.ParseClientMessage(s.client)
 	if err != nil {
-		s.plugins.LogSystem("error parsing client message: %s")
+		s.plugins.LogSystem("error parsing client message: %s", err)
 	} else {
 		s.plugins.LogClientRequest(s, msg)
 	}
