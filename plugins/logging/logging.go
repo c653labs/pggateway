@@ -1,34 +1,55 @@
 package logging
 
 import (
-	"log"
+	"os"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/c653labs/pggateway"
-	"github.com/c653labs/pgproto"
 )
 
 func init() {
-	pggateway.RegisterPlugin("logging", &LoggingPlugin{})
+	pggateway.RegisterPlugin("logging", newLoggingPlugin())
 }
 
-type LoggingPlugin struct{}
-
-func (l *LoggingPlugin) LogSystem(fmt string, args ...interface{}) {
-	log.Printf(fmt, args...)
+type LoggingPlugin struct {
+	log *logrus.Logger
 }
 
-func (l *LoggingPlugin) LogNewSession(sess *pggateway.Session) {
-	log.Printf("%s %s %s - new session started", sess.ID, sess.User, sess.Database)
+func newLoggingPlugin() *LoggingPlugin {
+	log := logrus.New()
+	log.Formatter = &logrus.JSONFormatter{}
+	log.Out = os.Stdout
+	log.Level = logrus.InfoLevel
+
+	return &LoggingPlugin{
+		log: log,
+	}
 }
 
-func (l *LoggingPlugin) LogSessionClosed(sess *pggateway.Session, err error) {
-	log.Printf("%s %s %s - session closed", sess.ID, sess.User, sess.Database)
+func (l *LoggingPlugin) entry(context pggateway.LoggingContext) *logrus.Entry {
+	entry := logrus.NewEntry(l.log)
+	if context != nil {
+		entry = entry.WithFields((logrus.Fields)(context))
+	}
+	return entry
 }
 
-func (l *LoggingPlugin) LogClientRequest(sess *pggateway.Session, msg pgproto.ClientMessage) {
-	log.Printf("%s %s %s - client - %s", sess.ID, sess.User, sess.Database, msg)
+func (l *LoggingPlugin) LogInfo(context pggateway.LoggingContext, msg string, args ...interface{}) {
+	l.entry(context).Infof(msg, args...)
 }
 
-func (l *LoggingPlugin) LogServerResponse(sess *pggateway.Session, msg pgproto.ServerMessage) {
-	log.Printf("%s %s %s - server - %s", sess.ID, sess.User, sess.Database, msg)
+func (l *LoggingPlugin) LogError(context pggateway.LoggingContext, msg string, args ...interface{}) {
+	l.entry(context).Errorf(msg, args...)
+}
+
+func (l *LoggingPlugin) LogDebug(context pggateway.LoggingContext, msg string, args ...interface{}) {
+	l.entry(context).Debugf(msg, args...)
+}
+
+func (l *LoggingPlugin) LogFatal(context pggateway.LoggingContext, msg string, args ...interface{}) {
+	l.entry(context).Warnf(msg, args...)
+}
+
+func (l *LoggingPlugin) LogWarn(context pggateway.LoggingContext, msg string, args ...interface{}) {
+	l.entry(context).Warnf(msg, args...)
 }

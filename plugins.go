@@ -1,9 +1,5 @@
 package pggateway
 
-import (
-	"github.com/c653labs/pgproto"
-)
-
 var authPlugin AuthenticationPlugin
 var loggingPlugins = make(map[string]LoggingPlugin)
 
@@ -16,13 +12,15 @@ type AuthenticationPlugin interface {
 	OnFinalize()
 }
 
+type LoggingContext map[string]interface{}
+
 type LoggingPlugin interface {
 	Plugin
-	LogSystem(string, ...interface{})
-	LogNewSession(*Session)
-	LogClientRequest(*Session, pgproto.ClientMessage)
-	LogServerResponse(*Session, pgproto.ServerMessage)
-	LogSessionClosed(*Session, error)
+	LogInfo(LoggingContext, string, ...interface{})
+	LogDebug(LoggingContext, string, ...interface{})
+	LogError(LoggingContext, string, ...interface{})
+	LogFatal(LoggingContext, string, ...interface{})
+	LogWarn(LoggingContext, string, ...interface{})
 }
 
 func RegisterPlugin(name string, plugin Plugin) {
@@ -38,32 +36,32 @@ type PluginRegistry struct{}
 
 func NewPluginRegistry() PluginRegistry { return PluginRegistry{} }
 
-func (r PluginRegistry) LogSystem(fmt string, args ...interface{}) {
+func (r PluginRegistry) LogInfo(context LoggingContext, msg string, args ...interface{}) {
 	for _, p := range loggingPlugins {
-		go p.LogSystem(fmt, args...)
+		go p.LogInfo(context, msg, args...)
 	}
 }
 
-func (r PluginRegistry) LogNewSession(sess *Session) {
+func (r PluginRegistry) LogError(context LoggingContext, msg string, args ...interface{}) {
 	for _, p := range loggingPlugins {
-		go p.LogNewSession(sess)
+		go p.LogError(context, msg, args...)
 	}
 }
 
-func (r PluginRegistry) LogSessionClosed(sess *Session, err error) {
+func (r PluginRegistry) LogWarn(context LoggingContext, msg string, args ...interface{}) {
 	for _, p := range loggingPlugins {
-		go p.LogSessionClosed(sess, err)
+		go p.LogWarn(context, msg, args...)
 	}
 }
 
-func (r PluginRegistry) LogClientRequest(sess *Session, msg pgproto.ClientMessage) {
+func (r PluginRegistry) LogDebug(context LoggingContext, msg string, args ...interface{}) {
 	for _, p := range loggingPlugins {
-		go p.LogClientRequest(sess, msg)
+		go p.LogDebug(context, msg, args...)
 	}
 }
 
-func (r PluginRegistry) LogServerResponse(sess *Session, msg pgproto.ServerMessage) {
+func (r PluginRegistry) LogFatal(context LoggingContext, msg string, args ...interface{}) {
 	for _, p := range loggingPlugins {
-		go p.LogServerResponse(sess, msg)
+		go p.LogFatal(context, msg, args...)
 	}
 }

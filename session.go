@@ -249,9 +249,9 @@ func (s *Session) writeServerMsg(msg pgproto.ServerMessage) error {
 func (s *Session) parseClientMessage() (pgproto.ClientMessage, error) {
 	msg, err := pgproto.ParseClientMessage(s.client)
 	if err != nil {
-		s.plugins.LogSystem("error parsing client message: %s", err)
+		s.plugins.LogError(s.loggingContext(), "error parsing client request: %s", err)
 	} else {
-		s.plugins.LogClientRequest(s, msg)
+		s.plugins.LogInfo(s.loggingContext(), "client request: %s", msg)
 	}
 	return msg, err
 }
@@ -259,9 +259,17 @@ func (s *Session) parseClientMessage() (pgproto.ClientMessage, error) {
 func (s *Session) parseServerMessage() (pgproto.ServerMessage, error) {
 	msg, err := pgproto.ParseServerMessage(s.server)
 	if err != nil {
-		s.plugins.LogSystem("error parsing server message: %#v", err)
+		s.plugins.LogError(s.loggingContext(), "error parsing server response: %#v", err)
 	} else {
-		s.plugins.LogServerResponse(s, msg)
+		s.plugins.LogInfo(s.loggingContext(), "server response: %s", msg)
 	}
 	return msg, err
+}
+
+func (s *Session) loggingContext() LoggingContext {
+	return LoggingContext{
+		"session_id": s.ID,
+		"user":       string(s.User),
+		"database":   string(s.Database),
+	}
 }
