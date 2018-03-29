@@ -19,7 +19,7 @@ func newLoggingPlugin() *LoggingPlugin {
 	log := logrus.New()
 	log.Formatter = &logrus.JSONFormatter{}
 	log.Out = os.Stdout
-	log.Level = logrus.InfoLevel
+	log.Level = logrus.WarnLevel
 
 	return &LoggingPlugin{
 		log: log,
