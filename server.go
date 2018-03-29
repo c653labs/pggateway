@@ -41,7 +41,6 @@ func (s *Server) Listen(addr string) error {
 		s.plugins.LogSystem("error binding to %#v: %s", addr, err)
 		return err
 	}
-	defer s.listener.Close()
 
 	s.plugins.LogSystem("listening for connections: %s", addr)
 	return s.acceptConnections()
@@ -54,10 +53,16 @@ func (s *Server) ListenUnix(addr string) error {
 		s.plugins.LogSystem("error binding to %#v: %s", addr, err)
 		return err
 	}
-	defer s.listener.Close()
 
 	s.plugins.LogSystem("listening for connections: %s", addr)
 	return s.acceptConnections()
+}
+
+func (s *Server) Close() error {
+	if s.listener != nil {
+		return s.listener.Close()
+	}
+	return nil
 }
 
 func (s *Server) handleClient(client net.Conn) error {
