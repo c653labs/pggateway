@@ -7,6 +7,7 @@ import (
 
 	"github.com/c653labs/pggateway"
 	_ "github.com/c653labs/pggateway/plugins/logging"
+	_ "github.com/c653labs/pggateway/plugins/passthrough-auth"
 )
 
 func main() {
@@ -17,7 +18,10 @@ func main() {
 	// pprof.StartCPUProfile(f)
 	// defer pprof.StopCPUProfile()
 
-	s := pggateway.NewServer()
+	s, err := pggateway.NewServer()
+	if err != nil {
+		log.Fatal(err)
+	}
 	defer s.Close()
 	go func() {
 		log.Println(s.Listen(":5433"))

@@ -8,22 +8,25 @@ import (
 )
 
 func init() {
-	pggateway.RegisterPlugin("logging", newLoggingPlugin())
+	pggateway.RegisterLoggingPlugin("logging", newLoggingPlugin)
 }
 
 type LoggingPlugin struct {
 	log *logrus.Logger
 }
 
-func newLoggingPlugin() *LoggingPlugin {
+func newLoggingPlugin() (pggateway.LoggingPlugin, error) {
 	log := logrus.New()
-	log.Formatter = &logrus.JSONFormatter{}
+	log.Formatter = &logrus.TextFormatter{
+		FullTimestamp:    true,
+		DisableTimestamp: false,
+	}
 	log.Out = os.Stdout
 	log.Level = logrus.WarnLevel
 
 	return &LoggingPlugin{
 		log: log,
-	}
+	}, nil
 }
 
 func (l *LoggingPlugin) entry(context pggateway.LoggingContext) *logrus.Entry {

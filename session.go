@@ -3,6 +3,7 @@ package pggateway
 import (
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net"
 
 	"github.com/c653labs/pgproto"
@@ -21,10 +22,12 @@ type Session struct {
 
 	startup *pgproto.StartupMessage
 
-	plugins PluginRegistry
+	stopped bool
+
+	plugins *PluginRegistry
 }
 
-func NewSession(client net.Conn, server net.Conn, plugins PluginRegistry) (*Session, error) {
+func NewSession(client net.Conn, server net.Conn, plugins *PluginRegistry) (*Session, error) {
 	var err error
 	id, err := uuid.NewV4()
 	if err != nil {
@@ -37,6 +40,7 @@ func NewSession(client net.Conn, server net.Conn, plugins PluginRegistry) (*Sess
 		server:  server,
 		salt:    generateSalt(),
 		plugins: plugins,
+		stopped: false,
 	}, nil
 }
 
@@ -61,11 +65,10 @@ func (s *Session) Handle() error {
 		return s.setupSSLConnection()
 	}
 
-	_, _, err = s.getUserPassword()
+	err = s.plugins.Authenticate(s, s.startup)
 	if err != nil {
 		return err
 	}
-
 	return s.proxy()
 }
 
@@ -90,17 +93,17 @@ func (s *Session) setupSSLConnection() error {
 	return s.Handle()
 }
 
-func (s *Session) getUserPassword() (*pgproto.AuthenticationRequest, *pgproto.PasswordMessage, error) {
+func (s *Session) GetUserPassword() (*pgproto.AuthenticationRequest, *pgproto.PasswordMessage, error) {
 	auth := &pgproto.AuthenticationRequest{
 		Method: pgproto.AuthenticationMethodMD5,
 		Salt:   s.salt,
 	}
-	err := s.writeServerMsg(auth)
+	err := s.WriteToClient(auth)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	msg, err := s.parseClientMessage()
+	msg, err := s.ParseClientRequest()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -115,7 +118,7 @@ func (s *Session) getUserPassword() (*pgproto.AuthenticationRequest, *pgproto.Pa
 }
 
 func (s *Session) parseStartupMessage() (*pgproto.StartupMessage, error) {
-	msg, err := s.parseClientMessage()
+	msg, err := s.ParseClientRequest()
 	if err != nil {
 		return nil, err
 	}
@@ -142,12 +145,12 @@ func (s *Session) parseStartupMessage() (*pgproto.StartupMessage, error) {
 }
 
 func (s *Session) authenticateWithServer(password []byte) error {
-	err := s.writeClientMsg(s.startup)
+	err := s.WriteToServer(s.startup)
 	if err != nil {
 		return err
 	}
 
-	msg, err := s.parseServerMessage()
+	msg, err := s.ParseServerResponse()
 	if err != nil {
 		return err
 	}
@@ -163,12 +166,12 @@ func (s *Session) authenticateWithServer(password []byte) error {
 		pwdMsg := &pgproto.PasswordMessage{}
 		// Use the salt from the server, not our session salt
 		pwdMsg.SetPassword(s.User, password, auth.Salt)
-		err = s.writeClientMsg(pwdMsg)
+		err = s.WriteToServer(pwdMsg)
 		if err != nil {
 			return err
 		}
 
-		msg, err = s.parseServerMessage()
+		msg, err = s.ParseServerResponse()
 		if err != nil {
 			return err
 		}
@@ -179,9 +182,9 @@ func (s *Session) authenticateWithServer(password []byte) error {
 			auth = m
 		case *pgproto.Error:
 			// TODO: Write generic cannot connect message?
-			return s.writeServerMsg(m)
+			return s.WriteToClient(m)
 		default:
-			return fmt.Errorf("expected authentication request: %#s", m)
+			return fmt.Errorf("expected authentication request: %s", m)
 		}
 
 		if auth.Method != pgproto.AuthenticationMethodOK {
@@ -189,45 +192,42 @@ func (s *Session) authenticateWithServer(password []byte) error {
 		}
 	}
 
-	err = s.writeServerMsg(auth)
+	err = s.WriteToClient(auth)
 	return err
 }
 
 func (s *Session) proxy() error {
-	// TODO: Use authentication plugin to get password
-	err := s.authenticateWithServer([]byte("test"))
-	if err != nil {
-		return err
-	}
-
 	stop := make(chan error)
 	go s.proxyClientMessages(stop)
 	go s.proxyServerMessages(stop)
-	return <-stop
+	err := <-stop
+	s.stopped = true
+
+	return err
 }
 
 func (s *Session) proxyServerMessages(stop chan error) {
 	for {
-		msg, err := s.parseServerMessage()
+		msg, err := s.ParseServerResponse()
 		if err != nil {
 			stop <- err
 			break
 		}
 
-		s.writeServerMsg(msg)
+		s.WriteToClient(msg)
 	}
 	stop <- nil
 }
 
 func (s *Session) proxyClientMessages(stop chan error) {
 	for {
-		msg, err := s.parseClientMessage()
+		msg, err := s.ParseClientRequest()
 		if err != nil {
 			stop <- err
 			break
 		}
 
-		s.writeClientMsg(msg)
+		s.WriteToServer(msg)
 
 		if _, ok := msg.(*pgproto.Termination); ok {
 			break
@@ -236,30 +236,42 @@ func (s *Session) proxyClientMessages(stop chan error) {
 	stop <- nil
 }
 
-func (s *Session) writeClientMsg(msg pgproto.ClientMessage) error {
+func (s *Session) WriteToServer(msg pgproto.ClientMessage) error {
 	_, err := msg.WriteTo(s.server)
 	return err
 }
 
-func (s *Session) writeServerMsg(msg pgproto.ServerMessage) error {
+func (s *Session) WriteToClient(msg pgproto.ServerMessage) error {
 	_, err := msg.WriteTo(s.client)
 	return err
 }
 
-func (s *Session) parseClientMessage() (pgproto.ClientMessage, error) {
+func (s *Session) ParseClientRequest() (pgproto.ClientMessage, error) {
 	msg, err := pgproto.ParseClientMessage(s.client)
+	if err == io.EOF {
+		return msg, io.EOF
+	}
+
 	if err != nil {
-		s.plugins.LogError(s.loggingContext(), "error parsing client request: %s", err)
+		if !s.stopped {
+			s.plugins.LogError(s.loggingContext(), "error parsing client request: %s", err)
+		}
 	} else {
 		s.plugins.LogInfo(s.loggingContext(), "client request: %s", msg)
 	}
 	return msg, err
 }
 
-func (s *Session) parseServerMessage() (pgproto.ServerMessage, error) {
+func (s *Session) ParseServerResponse() (pgproto.ServerMessage, error) {
 	msg, err := pgproto.ParseServerMessage(s.server)
+	if err == io.EOF {
+		return msg, io.EOF
+	}
+
 	if err != nil {
-		s.plugins.LogError(s.loggingContext(), "error parsing server response: %#v", err)
+		if !s.stopped {
+			s.plugins.LogError(s.loggingContext(), "error parsing server response: %#v", err)
+		}
 	} else {
 		s.plugins.LogInfo(s.loggingContext(), "server response: %s", msg)
 	}

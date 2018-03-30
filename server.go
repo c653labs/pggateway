@@ -1,18 +1,20 @@
 package pggateway
 
 import (
+	"io"
 	"net"
 )
 
 type Server struct {
 	listener net.Listener
-	plugins  PluginRegistry
+	plugins  *PluginRegistry
 }
 
-func NewServer() *Server {
+func NewServer() (*Server, error) {
+	registry, err := NewPluginRegistry()
 	return &Server{
-		plugins: NewPluginRegistry(),
-	}
+		plugins: registry,
+	}, err
 }
 
 func (s *Server) acceptConnections() error {
@@ -27,7 +29,7 @@ func (s *Server) acceptConnections() error {
 		go func() {
 			defer conn.Close()
 			err := s.handleClient(conn)
-			if err != nil {
+			if err != nil && err != io.EOF {
 				s.plugins.LogError(nil, "error handling client session: %s", err)
 			}
 		}()
@@ -42,7 +44,7 @@ func (s *Server) Listen(addr string) error {
 		return err
 	}
 
-	s.plugins.LogInfo(nil, "listening for connections: %s", addr)
+	s.plugins.LogWarn(nil, "listening for connections: %s", addr)
 	return s.acceptConnections()
 }
 
