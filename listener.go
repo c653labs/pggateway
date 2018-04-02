@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 
 	"github.com/c653labs/pgproto"
 )
@@ -51,21 +52,22 @@ func (l *Listener) Handle() error {
 			return err
 		}
 
-		l.plugins.LogInfo(nil, "new client session")
-		go func() {
+		l.plugins.LogInfo(nil, fmt.Sprintf("new client session: %#v", conn))
+		go func(conn net.Conn) {
 			defer conn.Close()
 			err := l.handleClient(conn)
 			if err != nil && err != io.EOF {
 				l.plugins.LogError(nil, "error handling client session: %s", err)
 			}
-		}()
+		}(conn)
 	}
 }
 
 func (l *Listener) handleClient(client net.Conn) error {
-	server, err := net.Dial("tcp", "127.0.0.1:5432")
+	addr := net.JoinHostPort(l.config.Target.Host, strconv.Itoa(l.config.Target.Port))
+	server, err := net.Dial("tcp", addr)
 	if err != nil {
-		l.plugins.LogError(nil, "error connecting to server %#v: %s", "127.0.0.1:5432", err)
+		l.plugins.LogError(nil, "error connecting to server %#v: %s", addr, err)
 		return err
 	}
 
