@@ -12,7 +12,7 @@ func init() {
 	pggateway.RegisterAuthPlugin("passthrough", newPassthroughPlugin)
 }
 
-func newPassthroughPlugin() (pggateway.AuthenticationPlugin, error) {
+func newPassthroughPlugin(config map[string]string) (pggateway.AuthenticationPlugin, error) {
 	return &Passthrough{}, nil
 }
 

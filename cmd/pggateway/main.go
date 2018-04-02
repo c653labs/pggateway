@@ -1,9 +1,11 @@
 package main
 
 import (
+	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 
 	"github.com/c653labs/pggateway"
 	_ "github.com/c653labs/pggateway/plugins/logging"
@@ -11,25 +13,35 @@ import (
 )
 
 func main() {
-	// f, err := os.Create("pggateway.pprof")
-	// if err != nil {
-	//	log.Fatal(err)
-	// }
-	// pprof.StartCPUProfile(f)
-	// defer pprof.StopCPUProfile()
+	c := pggateway.NewConfig()
+	cf, err := ioutil.ReadFile("example.yaml")
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	s, err := pggateway.NewServer()
+	err = c.Unmarshal(cf)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Set max number of CPUs to use for goroutines
+	if c.Procs > 0 {
+		runtime.GOMAXPROCS(c.Procs)
+	}
+
+	s, err := pggateway.NewServer(c)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer s.Close()
 	go func() {
-		log.Println(s.Listen(":5433"))
+		err = s.Start()
+		log.Printf("error starting: %#v", err)
 	}()
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	<-c
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt)
+	<-sig
 
 	log.Println("stopping server")
 	s.Close()

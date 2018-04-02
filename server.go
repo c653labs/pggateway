@@ -1,90 +1,46 @@
 package pggateway
 
-import (
-	"io"
-	"net"
-)
-
 type Server struct {
-	listener net.Listener
-	plugins  *PluginRegistry
+	listeners []*Listener
+	plugins   *PluginRegistry
+	config    *Config
 }
 
-func NewServer() (*Server, error) {
-	registry, err := NewPluginRegistry()
+func NewServer(c *Config) (*Server, error) {
+	registry, err := NewPluginRegistry(nil, c.Logging)
 	return &Server{
-		plugins: registry,
+		listeners: make([]*Listener, 0),
+		plugins:   registry,
+		config:    c,
 	}, err
 }
 
-func (s *Server) acceptConnections() error {
-	for {
-		conn, err := s.listener.Accept()
+func (s *Server) Start() error {
+	errs := make(chan error)
+
+	s.listeners = s.config.GetListeners()
+	for _, l := range s.listeners {
+		err := l.Listen()
 		if err != nil {
-			s.plugins.LogError(nil, "error accepting client: %s", err)
+			s.plugins.LogError(nil, "error binding to %#v: %s", l, err)
 			return err
 		}
 
-		s.plugins.LogInfo(nil, "new client session")
-		go func() {
-			defer conn.Close()
-			err := s.handleClient(conn)
-			if err != nil && err != io.EOF {
-				s.plugins.LogError(nil, "error handling client session: %s", err)
-			}
-		}()
+		s.plugins.LogWarn(nil, "listening for connections: %#v", l.String())
+		go func(l *Listener) {
+			errs <- l.Handle()
+		}(l)
 	}
-}
-
-func (s *Server) Listen(addr string) error {
-	var err error
-	s.listener, err = net.Listen("tcp", addr)
-	if err != nil {
-		s.plugins.LogError(nil, "error binding to %#v: %s", addr, err)
-		return err
-	}
-
-	s.plugins.LogWarn(nil, "listening for connections: %s", addr)
-	return s.acceptConnections()
-}
-
-func (s *Server) ListenUnix(addr string) error {
-	var err error
-	s.listener, err = net.Listen("unix", addr)
-	if err != nil {
-		s.plugins.LogError(nil, "error binding to %#v: %s", addr, err)
-		return err
-	}
-
-	s.plugins.LogInfo(nil, "listening for connections: %s", addr)
-	return s.acceptConnections()
+	return <-errs
 }
 
 func (s *Server) Close() error {
-	if s.listener != nil {
-		return s.listener.Close()
+	var err error
+	for _, l := range s.listeners {
+		e := l.Close()
+		if e != nil {
+			err = e
+		}
 	}
-	return nil
-}
-
-func (s *Server) handleClient(client net.Conn) error {
-	server, err := net.Dial("tcp", "127.0.0.1:5432")
-	if err != nil {
-		s.plugins.LogError(nil, "error connecting to server %#v: %s", "127.0.0.1:5432", err)
-		return err
-	}
-
-	sess, err := NewSession(client, server, s.plugins)
-	if err != nil {
-		s.plugins.LogError(nil, "error creating new client session: %s", err)
-		client.Close()
-		return err
-	}
-	defer sess.Close()
-
-	s.plugins.LogInfo(sess.loggingContext(), "new client session")
-	err = sess.Handle()
-
-	s.plugins.LogInfo(sess.loggingContext(), "%s", err)
 	return err
 }

@@ -1,12 +1,16 @@
 package pggateway
 
-import "github.com/c653labs/pgproto"
+import (
+	"fmt"
+
+	"github.com/c653labs/pgproto"
+)
 
 var authPlugins = make(map[string]authPluginInitializer)
 var loggingPlugins = make(map[string]loggingPluginInitializer)
 
-type authPluginInitializer func() (AuthenticationPlugin, error)
-type loggingPluginInitializer func() (LoggingPlugin, error)
+type authPluginInitializer func(map[string]string) (AuthenticationPlugin, error)
+type loggingPluginInitializer func(map[string]string) (LoggingPlugin, error)
 
 type Plugin interface{}
 
@@ -30,7 +34,7 @@ func RegisterAuthPlugin(name string, init authPluginInitializer) {
 	authPlugins[name] = init
 }
 
-func RegisterLoggingPlugin(name string, init func() (LoggingPlugin, error)) {
+func RegisterLoggingPlugin(name string, init func(map[string]string) (LoggingPlugin, error)) {
 	loggingPlugins[name] = init
 }
 
@@ -47,22 +51,34 @@ type PluginRegistry struct {
 	log            chan loggingMessage
 }
 
-func NewPluginRegistry() (*PluginRegistry, error) {
+func NewPluginRegistry(auth map[string]map[string]string, logging map[string]map[string]string) (*PluginRegistry, error) {
 	r := &PluginRegistry{
 		authPlugin:     nil,
 		loggingPlugins: make(map[string]LoggingPlugin, 0),
 		log:            make(chan loggingMessage),
 	}
 
-	// TODO: Select the right plugin, rather than just using the first
-	p, err := authPlugins["passthrough"]()
-	if err != nil {
-		return nil, err
-	}
-	r.authPlugin = p
+	for name, config := range auth {
+		init, ok := authPlugins[name]
+		if !ok {
+			return nil, fmt.Errorf("could not find authentication plugin: %s", name)
+		}
 
-	for name, init := range loggingPlugins {
-		p, err := init()
+		p, err := init(config)
+		if err != nil {
+			return nil, err
+		}
+		r.authPlugin = p
+		break
+	}
+
+	for name, config := range logging {
+		init, ok := loggingPlugins[name]
+		if !ok {
+			return nil, fmt.Errorf("could not find logging plugin: %s", name)
+		}
+
+		p, err := init(config)
 		if err != nil {
 			return nil, err
 		}

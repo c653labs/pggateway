@@ -1,7 +1,6 @@
 package pggateway
 
 import (
-	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -15,8 +14,9 @@ type Session struct {
 	User     []byte
 	Database []byte
 
+	IsSSL    bool
 	client   net.Conn
-	server   net.Conn
+	target   net.Conn
 	salt     []byte
 	password []byte
 
@@ -27,7 +27,7 @@ type Session struct {
 	plugins *PluginRegistry
 }
 
-func NewSession(client net.Conn, server net.Conn, plugins *PluginRegistry) (*Session, error) {
+func NewSession(startup *pgproto.StartupMessage, user []byte, database []byte, isSSL bool, client net.Conn, target net.Conn, plugins *PluginRegistry) (*Session, error) {
 	var err error
 	id, err := uuid.NewV4()
 	if err != nil {
@@ -35,18 +35,22 @@ func NewSession(client net.Conn, server net.Conn, plugins *PluginRegistry) (*Ses
 	}
 
 	return &Session{
-		ID:      id.String(),
-		client:  client,
-		server:  server,
-		salt:    generateSalt(),
-		plugins: plugins,
-		stopped: false,
+		ID:       id.String(),
+		User:     user,
+		Database: database,
+		IsSSL:    isSSL,
+		client:   client,
+		target:   target,
+		salt:     generateSalt(),
+		startup:  startup,
+		plugins:  plugins,
+		stopped:  false,
 	}, nil
 }
 
 func (s *Session) Close() {
-	if s.server != nil {
-		s.server.Close()
+	if s.target != nil {
+		s.target.Close()
 	}
 }
 
@@ -56,41 +60,11 @@ func (s *Session) String() string {
 
 func (s *Session) Handle() error {
 	var err error
-	s.startup, err = s.parseStartupMessage()
-	if err != nil {
-		return err
-	}
-
-	if s.startup.SSLRequest {
-		return s.setupSSLConnection()
-	}
-
 	err = s.plugins.Authenticate(s, s.startup)
 	if err != nil {
 		return err
 	}
 	return s.proxy()
-}
-
-func (s *Session) setupSSLConnection() error {
-	_, err := s.client.Write([]byte{'S'})
-	if err != nil {
-		return err
-	}
-
-	cer, err := tls.LoadX509KeyPair("server.crt", "server.key")
-	if err != nil {
-		return err
-	}
-
-	// Upgrade the client connection to a TLS connection
-	client := tls.Server(s.client, &tls.Config{
-		Certificates: []tls.Certificate{cer},
-	})
-	client.Handshake()
-	s.client = client
-
-	return s.Handle()
 }
 
 func (s *Session) GetUserPassword() (*pgproto.AuthenticationRequest, *pgproto.PasswordMessage, error) {
@@ -144,58 +118,6 @@ func (s *Session) parseStartupMessage() (*pgproto.StartupMessage, error) {
 	return nil, fmt.Errorf("unexpected message type")
 }
 
-func (s *Session) authenticateWithServer(password []byte) error {
-	err := s.WriteToServer(s.startup)
-	if err != nil {
-		return err
-	}
-
-	msg, err := s.ParseServerResponse()
-	if err != nil {
-		return err
-	}
-	var auth *pgproto.AuthenticationRequest
-	var ok bool
-	auth, ok = msg.(*pgproto.AuthenticationRequest)
-	if !ok {
-		return fmt.Errorf("expected authentication request")
-	}
-
-	// Requires password
-	if auth.Method != pgproto.AuthenticationMethodOK {
-		pwdMsg := &pgproto.PasswordMessage{}
-		// Use the salt from the server, not our session salt
-		pwdMsg.SetPassword(s.User, password, auth.Salt)
-		err = s.WriteToServer(pwdMsg)
-		if err != nil {
-			return err
-		}
-
-		msg, err = s.ParseServerResponse()
-		if err != nil {
-			return err
-		}
-
-		auth = nil
-		switch m := msg.(type) {
-		case *pgproto.AuthenticationRequest:
-			auth = m
-		case *pgproto.Error:
-			// TODO: Write generic cannot connect message?
-			return s.WriteToClient(m)
-		default:
-			return fmt.Errorf("expected authentication request: %s", m)
-		}
-
-		if auth.Method != pgproto.AuthenticationMethodOK {
-			return fmt.Errorf("expected successful authentication request")
-		}
-	}
-
-	err = s.WriteToClient(auth)
-	return err
-}
-
 func (s *Session) proxy() error {
 	stop := make(chan error)
 	go s.proxyClientMessages(stop)
@@ -237,7 +159,7 @@ func (s *Session) proxyClientMessages(stop chan error) {
 }
 
 func (s *Session) WriteToServer(msg pgproto.ClientMessage) error {
-	_, err := msg.WriteTo(s.server)
+	_, err := msg.WriteTo(s.target)
 	return err
 }
 
@@ -263,7 +185,7 @@ func (s *Session) ParseClientRequest() (pgproto.ClientMessage, error) {
 }
 
 func (s *Session) ParseServerResponse() (pgproto.ServerMessage, error) {
-	msg, err := pgproto.ParseServerMessage(s.server)
+	msg, err := pgproto.ParseServerMessage(s.target)
 	if err == io.EOF {
 		return msg, io.EOF
 	}
@@ -283,5 +205,8 @@ func (s *Session) loggingContext() LoggingContext {
 		"session_id": s.ID,
 		"user":       string(s.User),
 		"database":   string(s.Database),
+		"ssl":        s.IsSSL,
+		"client":     s.client.RemoteAddr(),
+		"target":     s.target.RemoteAddr(),
 	}
 }

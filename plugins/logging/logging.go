@@ -1,7 +1,9 @@
 package logging
 
 import (
+	"fmt"
 	"os"
+	"strings"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/c653labs/pggateway"
@@ -15,14 +17,37 @@ type LoggingPlugin struct {
 	log *logrus.Logger
 }
 
-func newLoggingPlugin() (pggateway.LoggingPlugin, error) {
+func newLoggingPlugin(config map[string]string) (pggateway.LoggingPlugin, error) {
 	log := logrus.New()
 	log.Formatter = &logrus.TextFormatter{
 		FullTimestamp:    true,
 		DisableTimestamp: false,
 	}
 	log.Out = os.Stdout
+	if out, ok := config["out"]; ok {
+		switch out {
+		case "-":
+			log.Out = os.Stdout
+		}
+	}
+
 	log.Level = logrus.WarnLevel
+	if level, ok := config["level"]; ok {
+		switch strings.ToLower(level) {
+		case "warn":
+			log.Level = logrus.WarnLevel
+		case "info":
+			log.Level = logrus.InfoLevel
+		case "error":
+			log.Level = logrus.ErrorLevel
+		case "debug":
+			log.Level = logrus.DebugLevel
+		case "fatal":
+			log.Level = logrus.FatalLevel
+		default:
+			return nil, fmt.Errorf("unknown logging level: %#v", level)
+		}
+	}
 
 	return &LoggingPlugin{
 		log: log,
