@@ -16,7 +16,7 @@ type Plugin interface{}
 
 type AuthenticationPlugin interface {
 	Plugin
-	Authenticate(*Session, *pgproto.StartupMessage) error
+	Authenticate(*Session, *pgproto.StartupMessage) (bool, error)
 }
 
 type LoggingContext map[string]interface{}
@@ -46,15 +46,15 @@ type loggingMessage struct {
 }
 
 type PluginRegistry struct {
-	authPlugin     AuthenticationPlugin
+	authPlugins    map[string]AuthenticationPlugin
 	loggingPlugins map[string]LoggingPlugin
 	log            chan loggingMessage
 }
 
 func NewPluginRegistry(auth map[string]map[string]string, logging map[string]map[string]string) (*PluginRegistry, error) {
 	r := &PluginRegistry{
-		authPlugin:     nil,
-		loggingPlugins: make(map[string]LoggingPlugin, 0),
+		authPlugins:    make(map[string]AuthenticationPlugin),
+		loggingPlugins: make(map[string]LoggingPlugin),
 		log:            make(chan loggingMessage),
 	}
 
@@ -68,8 +68,7 @@ func NewPluginRegistry(auth map[string]map[string]string, logging map[string]map
 		if err != nil {
 			return nil, err
 		}
-		r.authPlugin = p
-		break
+		r.authPlugins[name] = p
 	}
 
 	for name, config := range logging {
@@ -111,8 +110,18 @@ func (r *PluginRegistry) handleLogging() {
 	}
 }
 
-func (r *PluginRegistry) Authenticate(sess *Session, startup *pgproto.StartupMessage) error {
-	return r.authPlugin.Authenticate(sess, startup)
+func (r *PluginRegistry) Authenticate(sess *Session, startup *pgproto.StartupMessage) (bool, error) {
+	for _, p := range r.authPlugins {
+		success, err := p.Authenticate(sess, startup)
+		if err != nil {
+			return false, err
+		}
+		if success {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func (r *PluginRegistry) LogInfo(context LoggingContext, msg string, args ...interface{}) {

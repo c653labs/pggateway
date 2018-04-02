@@ -59,11 +59,20 @@ func (s *Session) String() string {
 }
 
 func (s *Session) Handle() error {
-	var err error
-	err = s.plugins.Authenticate(s, s.startup)
+	success, err := s.plugins.Authenticate(s, s.startup)
 	if err != nil {
 		return err
 	}
+
+	if !success {
+		errMsg := &pgproto.Error{
+			Severity: []byte("Fatal"),
+			Message:  []byte("failed to authenticate"),
+		}
+		s.WriteToClient(errMsg)
+		return nil
+	}
+
 	return s.proxy()
 }
 

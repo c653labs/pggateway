@@ -16,6 +16,6 @@ func newPassthroughPlugin(config map[string]string) (pggateway.AuthenticationPlu
 	return &Passthrough{}, nil
 }
 
-func (p *Passthrough) Authenticate(sess *pggateway.Session, startup *pgproto.StartupMessage) error {
-	return sess.WriteToServer(startup)
+func (p *Passthrough) Authenticate(sess *pggateway.Session, startup *pgproto.StartupMessage) (bool, error) {
+	return true, sess.WriteToServer(startup)
 }
