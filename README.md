@@ -6,7 +6,7 @@
 PGGateway is a PostgreSQL proxy services that allows you to use custom authentication and request logging plugins.
 
 ## Building
-```
+```bash
 # clone
 git clone git://github.com/c653labs/pggateway
 cd ./pggateway
@@ -96,11 +96,13 @@ Example usages:
 listeners:
   ':5433':
     logging:
+      # Write log entries to /var/log/pggateway.log
       file:
         level: 'info'
         out: '/var/log/pggateway.log'
   ':5434':
     logging:
+      # Write log entries formatted as JSON to stdout
       file:
         format: 'json'
         level: 'warn'
