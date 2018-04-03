@@ -131,6 +131,18 @@ func (s *Session) proxy() error {
 	stop := make(chan error)
 	go s.proxyClientMessages(stop)
 	go s.proxyServerMessages(stop)
+
+	// Disable message interception
+	// go func(stop chan error) {
+	//	_, err := io.Copy(s.client, s.target)
+	//	stop <- err
+	// }(stop)
+
+	// go func(stop chan error) {
+	//	_, err := io.Copy(s.target, s.client)
+	//	stop <- err
+	// }(stop)
+
 	err := <-stop
 	s.stopped = true
 
@@ -138,7 +150,7 @@ func (s *Session) proxy() error {
 }
 
 func (s *Session) proxyServerMessages(stop chan error) {
-	for {
+	for !s.stopped {
 		msg, err := s.ParseServerResponse()
 		if err != nil {
 			stop <- err
@@ -151,7 +163,7 @@ func (s *Session) proxyServerMessages(stop chan error) {
 }
 
 func (s *Session) proxyClientMessages(stop chan error) {
-	for {
+	for !s.stopped {
 		msg, err := s.ParseClientRequest()
 		if err != nil {
 			stop <- err

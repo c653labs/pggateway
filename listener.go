@@ -63,6 +63,16 @@ func (l *Listener) Handle() error {
 	}
 }
 
+func (l *Listener) databaseAllowed(database []byte) bool {
+	_, ok := l.config.Databases[string(database)]
+	if ok {
+		return true
+	}
+
+	_, ok = l.config.Databases["*"]
+	return ok
+}
+
 func (l *Listener) handleClient(client net.Conn) error {
 	addr := net.JoinHostPort(l.config.Target.Host, strconv.Itoa(l.config.Target.Port))
 	server, err := net.Dial("tcp", addr)
@@ -125,7 +135,7 @@ func (l *Listener) handleClient(client net.Conn) error {
 		return err
 	}
 
-	if _, ok = l.config.Databases[string(database)]; !ok {
+	if !l.databaseAllowed(database) {
 		// Database is nto supported
 		errMsg := pgproto.Error{
 			Severity: []byte("Fatal"),

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"io/ioutil"
 	"log"
 	"os"
@@ -8,13 +9,21 @@ import (
 	"runtime"
 
 	"github.com/c653labs/pggateway"
-	_ "github.com/c653labs/pggateway/plugins/logging"
+	_ "github.com/c653labs/pggateway/plugins/file"
 	_ "github.com/c653labs/pggateway/plugins/passthrough-auth"
 )
 
+var configFilename string
+
+func init() {
+	flag.StringVar(&configFilename, "config", "pggateway.yaml", "config file to load")
+}
+
 func main() {
+	flag.Parse()
+
 	c := pggateway.NewConfig()
-	cf, err := ioutil.ReadFile("example.yaml")
+	cf, err := ioutil.ReadFile(configFilename)
 	if err != nil {
 		log.Fatal(err)
 	}

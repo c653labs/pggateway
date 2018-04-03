@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	pggateway.RegisterLoggingPlugin("logging", newLoggingPlugin)
+	pggateway.RegisterLoggingPlugin("file", newLoggingPlugin)
 }
 
 type LoggingPlugin struct {
@@ -19,10 +19,22 @@ type LoggingPlugin struct {
 
 func newLoggingPlugin(config map[string]string) (pggateway.LoggingPlugin, error) {
 	log := logrus.New()
+
+	// Log format
 	log.Formatter = &logrus.TextFormatter{
 		FullTimestamp:    true,
 		DisableTimestamp: false,
 	}
+	if format, ok := config["format"]; ok {
+		switch strings.ToLower(format) {
+		case "json":
+			log.Formatter = &logrus.JSONFormatter{
+				DisableTimestamp: false,
+			}
+		}
+	}
+
+	// Out file
 	log.Out = os.Stdout
 	if out, ok := config["out"]; ok {
 		switch out {
@@ -31,6 +43,7 @@ func newLoggingPlugin(config map[string]string) (pggateway.LoggingPlugin, error)
 		}
 	}
 
+	// Log level
 	log.Level = logrus.WarnLevel
 	if level, ok := config["level"]; ok {
 		switch strings.ToLower(level) {
