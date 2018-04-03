@@ -52,7 +52,6 @@ func (l *Listener) Handle() error {
 			return err
 		}
 
-		l.plugins.LogInfo(nil, fmt.Sprintf("new client session: %#v", conn))
 		go func(conn net.Conn) {
 			defer conn.Close()
 			err := l.handleClient(conn)
