@@ -44,6 +44,12 @@ psql "postgresql://user:password@127.0.0.1:5433/db_name""
 Basic example, proxying requests for any database from `127.0.0.1:5433` to `127.0.0.1:5432`.
 
 ```yaml
+# Log server messages to stdout
+logging:
+  file:
+    level: 'warn'
+    out: '-'
+
 listeners:
   # Listen for requests on port `5433`
   '127.0.0.1:5433':
@@ -51,6 +57,16 @@ listeners:
     target:
       host: '127.0.0.1'
       port: 5432
+
+    # Pass all authentication along to the target server
+    authentication:
+      passthrough:
+
+    # Log messages from this listener to stdout
+    logging:
+      file:
+        level: 'info'
+        out: '-'
 
     # Databases we will accept requests for,
     #   '*' is a special case matching any database
