@@ -3,7 +3,7 @@
 
 **Note:** This project is still under active development and is not quite ready for prime time yet.
 
-PGGateway is a PostgreSQL proxy services that allows you to use custom authentication and request logging plugins.
+PGGateway is a PostgreSQL proxy service that allows you to use custom authentication and request logging plugins.
 
 ## Building
 ```bash
@@ -73,8 +73,6 @@ listeners:
     databases:
       '*':
 ```
-
-### Options
 
 ## Plugins
 Authentication and logging plugins can be configured on a per-listener basis.
