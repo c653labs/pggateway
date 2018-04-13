@@ -9,8 +9,8 @@ import (
 	"runtime"
 
 	"github.com/c653labs/pggateway"
-	_ "github.com/c653labs/pggateway/plugins/file"
-	_ "github.com/c653labs/pggateway/plugins/passthrough-auth"
+	_ "github.com/c653labs/pggateway/plugins/file-logging"
+	_ "github.com/c653labs/pggateway/plugins/passthrough-authentication"
 )
 
 var configFilename string
