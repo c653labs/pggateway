@@ -134,6 +134,32 @@ listeners:
 ```
 
 ### Logging
+#### CloudWatch logs
+CloudWatch logs plugin will write log entries to a CloudWatch log group and stream.
+
+Configuration options:
+
+- `group` - Log group name to write to.
+- `stream` - Log stream name to write to.
+- `region` - AWS region of the log group to write to.
+- `level` - Log level to emit: "info", "warn", "debug", "error", "fatal", default "warn"
+
+The log stream will be created if it does not already exist, but the log group must already exist.
+
+Example usage:
+
+```yaml
+listeners:
+  ':5433':
+    logging:
+      # Write log entries to `my-log-group/my-log-stream` in the `us-east-1` region
+      cloudwatchlogs:
+        group: 'my-log-group'
+        stream: 'my-log-stream'
+        region: 'us-east-1'
+        level: 'info'
+```
+
 #### File
 File logging writes log entries to a file or `stdout`.
 
