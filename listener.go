@@ -103,11 +103,11 @@ func (l *Listener) handleClient(client net.Conn) error {
 		}
 	} else if l.config.SSL.Required {
 		// SSL is required but they didn't request it, return an error
-		errMsg := pgproto.Error{
+		errMsg := &pgproto.Error{
 			Severity: []byte("Fatal"),
 			Message:  []byte("server does not support SSL, but SSL was required"),
 		}
-		_, err = errMsg.WriteTo(client)
+		_, err = pgproto.WriteTo(errMsg, client)
 		return err
 	}
 
@@ -116,31 +116,31 @@ func (l *Listener) handleClient(client net.Conn) error {
 	var ok bool
 	if user, ok = startup.Options["user"]; !ok {
 		// No username was provided
-		errMsg := pgproto.Error{
+		errMsg := &pgproto.Error{
 			Severity: []byte("Fatal"),
 			Message:  []byte("user startup option is required"),
 		}
-		_, err = errMsg.WriteTo(client)
+		_, err = pgproto.WriteTo(errMsg, client)
 		return err
 	}
 
 	if database, ok = startup.Options["database"]; !ok {
 		// No database was provided
-		errMsg := pgproto.Error{
+		errMsg := &pgproto.Error{
 			Severity: []byte("Fatal"),
 			Message:  []byte("database startup option is required"),
 		}
-		_, err = errMsg.WriteTo(client)
+		_, err = pgproto.WriteTo(errMsg, client)
 		return err
 	}
 
 	if !l.databaseAllowed(database) {
 		// Database is nto supported
-		errMsg := pgproto.Error{
+		errMsg := &pgproto.Error{
 			Severity: []byte("Fatal"),
 			Message:  []byte(fmt.Sprintf("unknown database %#v", string(database))),
 		}
-		_, err = errMsg.WriteTo(client)
+		_, err = pgproto.WriteTo(errMsg, client)
 		return err
 	}
 	sess, err := NewSession(startup, user, database, isSSL, client, server, l.plugins)

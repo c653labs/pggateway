@@ -30,6 +30,9 @@ func newLoggingPlugin(config map[string]string) (pggateway.LoggingPlugin, error)
 		case "json":
 			log.Formatter = &logrus.JSONFormatter{
 				DisableTimestamp: false,
+				FieldMap: logrus.FieldMap{
+					logrus.FieldKeyMsg: "text",
+				},
 			}
 		}
 	}

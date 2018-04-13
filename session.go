@@ -180,12 +180,12 @@ func (s *Session) proxyClientMessages(stop chan error) {
 }
 
 func (s *Session) WriteToServer(msg pgproto.ClientMessage) error {
-	_, err := msg.WriteTo(s.target)
+	_, err := pgproto.WriteTo(msg, s.target)
 	return err
 }
 
 func (s *Session) WriteToClient(msg pgproto.ServerMessage) error {
-	_, err := msg.WriteTo(s.client)
+	_, err := pgproto.WriteTo(msg, s.client)
 	return err
 }
 
@@ -197,10 +197,10 @@ func (s *Session) ParseClientRequest() (pgproto.ClientMessage, error) {
 
 	if err != nil {
 		if !s.stopped {
-			s.plugins.LogError(s.loggingContext(), "error parsing client request: %s", err)
+			s.plugins.LogError(s.loggingContextWithMessage(msg), "error parsing client request: %s", err)
 		}
 	} else {
-		s.plugins.LogInfo(s.loggingContext(), "client request: %s", msg)
+		s.plugins.LogInfo(s.loggingContextWithMessage(msg), "client request")
 	}
 	return msg, err
 }
@@ -213,10 +213,10 @@ func (s *Session) ParseServerResponse() (pgproto.ServerMessage, error) {
 
 	if err != nil {
 		if !s.stopped {
-			s.plugins.LogError(s.loggingContext(), "error parsing server response: %#v", err)
+			s.plugins.LogError(s.loggingContextWithMessage(msg), "error parsing server response: %#v", err)
 		}
 	} else {
-		s.plugins.LogInfo(s.loggingContext(), "server response: %s", msg)
+		s.plugins.LogInfo(s.loggingContextWithMessage(msg), "server response")
 	}
 	return msg, err
 }
@@ -230,4 +230,10 @@ func (s *Session) loggingContext() LoggingContext {
 		"client":     s.client.RemoteAddr(),
 		"target":     s.target.RemoteAddr(),
 	}
+}
+
+func (s *Session) loggingContextWithMessage(msg pgproto.Message) LoggingContext {
+	context := s.loggingContext()
+	context["message"] = msg.AsMap()
+	return context
 }
