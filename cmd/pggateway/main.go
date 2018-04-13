@@ -9,6 +9,7 @@ import (
 	"runtime"
 
 	"github.com/c653labs/pggateway"
+	_ "github.com/c653labs/pggateway/plugins/cloudwatchlogs-logging"
 	_ "github.com/c653labs/pggateway/plugins/file-logging"
 	_ "github.com/c653labs/pggateway/plugins/passthrough-authentication"
 )
@@ -45,7 +46,7 @@ func main() {
 	defer s.Close()
 	go func() {
 		err = s.Start()
-		log.Printf("error starting: %#v", err)
+		log.Fatalf("error starting: %#v", err)
 	}()
 
 	sig := make(chan os.Signal, 1)

@@ -8,11 +8,14 @@ type Server struct {
 
 func NewServer(c *Config) (*Server, error) {
 	registry, err := NewPluginRegistry(nil, c.Logging)
+	if err != nil {
+		return nil, err
+	}
 	return &Server{
 		listeners: make([]*Listener, 0),
 		plugins:   registry,
 		config:    c,
-	}, err
+	}, nil
 }
 
 func (s *Server) Start() error {
