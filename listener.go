@@ -154,7 +154,11 @@ func (l *Listener) handleClient(client net.Conn) error {
 	l.plugins.LogInfo(sess.loggingContext(), "new client session")
 	err = sess.Handle()
 
-	l.plugins.LogInfo(sess.loggingContext(), "%s", err)
+	if err != nil && err != io.EOF {
+		l.plugins.LogError(sess.loggingContext(), "client session end: %s", err)
+	} else {
+		l.plugins.LogInfo(sess.loggingContext(), "client session end")
+	}
 	return err
 }
 
