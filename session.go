@@ -150,14 +150,29 @@ func (s *Session) proxy() error {
 }
 
 func (s *Session) proxyServerMessages(stop chan error) {
+	var buf []pgproto.Message
 	for !s.stopped {
 		msg, err := s.ParseServerResponse()
 		if err != nil {
 			stop <- err
 			break
 		}
+		buf = append(buf, msg)
 
-		s.WriteToClient(msg)
+		flush := false
+		switch m := msg.(type) {
+		case *pgproto.ReadyForQuery:
+			flush = true
+		case *pgproto.AuthenticationRequest:
+			flush = m.Method != pgproto.AuthenticationMethodOK
+		}
+		if flush || len(buf) > 15 {
+			pgproto.WriteMessages(buf, s.client)
+			buf = nil
+		}
+	}
+	if len(buf) > 0 {
+		pgproto.WriteMessages(buf, s.client)
 	}
 	stop <- nil
 }
