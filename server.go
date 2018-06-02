@@ -38,6 +38,7 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Close() error {
+	s.plugins.LogWarn(nil, "stopping server")
 	var err error
 	for _, l := range s.listeners {
 		e := l.Close()
