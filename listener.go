@@ -117,7 +117,7 @@ func (l *Listener) handleClient(client net.Conn) error {
 			Severity: []byte("Fatal"),
 			Message:  []byte("server does not support SSL, but SSL was required"),
 		}
-		_, err = pgproto.WriteTo(errMsg, client)
+		_, err = pgproto.WriteMessage(errMsg, client)
 		return err
 	}
 
@@ -130,7 +130,7 @@ func (l *Listener) handleClient(client net.Conn) error {
 			Severity: []byte("Fatal"),
 			Message:  []byte("user startup option is required"),
 		}
-		_, err = pgproto.WriteTo(errMsg, client)
+		_, err = pgproto.WriteMessage(errMsg, client)
 		return err
 	}
 
@@ -140,7 +140,7 @@ func (l *Listener) handleClient(client net.Conn) error {
 			Severity: []byte("Fatal"),
 			Message:  []byte("database startup option is required"),
 		}
-		_, err = pgproto.WriteTo(errMsg, client)
+		_, err = pgproto.WriteMessage(errMsg, client)
 		return err
 	}
 
@@ -150,7 +150,7 @@ func (l *Listener) handleClient(client net.Conn) error {
 			Severity: []byte("Fatal"),
 			Message:  []byte(fmt.Sprintf("unknown database %#v", string(database))),
 		}
-		_, err = pgproto.WriteTo(errMsg, client)
+		_, err = pgproto.WriteMessage(errMsg, client)
 		return err
 	}
 	sess, err := NewSession(startup, user, database, isSSL, client, server, l.plugins)

@@ -180,12 +180,12 @@ func (s *Session) proxyClientMessages(stop chan error) {
 }
 
 func (s *Session) WriteToServer(msg pgproto.ClientMessage) error {
-	_, err := pgproto.WriteTo(msg, s.target)
+	_, err := pgproto.WriteMessage(msg, s.target)
 	return err
 }
 
 func (s *Session) WriteToClient(msg pgproto.ServerMessage) error {
-	_, err := pgproto.WriteTo(msg, s.client)
+	_, err := pgproto.WriteMessage(msg, s.client)
 	return err
 }
 
