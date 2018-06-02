@@ -11,18 +11,21 @@ import (
 )
 
 type Listener struct {
-	l       net.Listener
-	config  *ListenerConfig
-	plugins *PluginRegistry
+	l        net.Listener
+	config   *ListenerConfig
+	plugins  *PluginRegistry
+	stopping bool
 }
 
 func NewListener(config *ListenerConfig) *Listener {
 	return &Listener{
-		config: config,
+		config:   config,
+		stopping: false,
 	}
 }
 
 func (l *Listener) Listen() error {
+	l.stopping = false
 	var err error
 	l.plugins, err = NewPluginRegistry(l.config.Authentication, l.config.Logging)
 	if err != nil {
@@ -38,8 +41,9 @@ func (l *Listener) Listen() error {
 }
 
 func (l *Listener) Close() error {
+	l.stopping = true
 	if l.l != nil {
-		return l.l.Close()
+		l.l.Close()
 	}
 	return nil
 }
@@ -47,7 +51,13 @@ func (l *Listener) Close() error {
 func (l *Listener) Handle() error {
 	for {
 		conn, err := l.l.Accept()
+		if opErr, ok := err.(*net.OpError); ok && opErr.Timeout() {
+			continue
+		}
 		if err != nil {
+			if l.stopping {
+				return nil
+			}
 			l.plugins.LogError(nil, "error accepting client: %s", err)
 			return err
 		}
