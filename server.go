@@ -1,5 +1,7 @@
 package pggateway
 
+import "sync"
+
 type Server struct {
 	listeners []*Listener
 	plugins   *PluginRegistry
@@ -19,22 +21,33 @@ func NewServer(c *Config) (*Server, error) {
 }
 
 func (s *Server) Start() error {
-	errs := make(chan error)
+	m := &sync.Mutex{}
+	c := sync.NewCond(m)
+	errs := make([]error, 0)
 
 	s.listeners = s.config.GetListeners()
 	for _, l := range s.listeners {
 		err := l.Listen()
 		if err != nil {
-			s.plugins.LogError(nil, "error binding to %#v: %s", l, err)
+			s.plugins.LogError(nil, "error binding to %s: %s", l, err)
 			return err
 		}
 
-		s.plugins.LogWarn(nil, "listening for connections: %#v", l.String())
+		s.plugins.LogWarn(nil, "listening for connections: %v", l.String())
 		go func(l *Listener) {
-			errs <- l.Handle()
+			err := l.Handle()
+			errs = append(errs, err)
+			c.Broadcast()
 		}(l)
 	}
-	return <-errs
+
+	c.L.Lock()
+	c.Wait()
+	c.L.Unlock()
+	if len(errs) > 0 {
+		return errs[0]
+	}
+	return nil
 }
 
 func (s *Server) Close() error {
