@@ -2,98 +2,100 @@ package logging
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/c653labs/pggateway"
+	"github.com/rs/zerolog"
 )
 
 func init() {
+	zerolog.TimeFieldFormat = ""
 	pggateway.RegisterLoggingPlugin("file", newLoggingPlugin)
 }
 
 type LoggingPlugin struct {
-	log *logrus.Logger
+	log zerolog.Logger
 }
 
 func newLoggingPlugin(config map[string]string) (pggateway.LoggingPlugin, error) {
-	log := logrus.New()
+	var err error
 
-	// Log format
-	log.Formatter = &logrus.TextFormatter{
-		FullTimestamp:    true,
-		DisableTimestamp: false,
-	}
-	if format, ok := config["format"]; ok {
-		switch strings.ToLower(format) {
-		case "json":
-			log.Formatter = &logrus.JSONFormatter{
-				DisableTimestamp: false,
-				FieldMap: logrus.FieldMap{
-					logrus.FieldKeyMsg: "text",
-				},
+	var outFile io.Writer
+	outFile = os.Stdout
+	textColor := true
+	if out, ok := config["out"]; ok {
+		switch out {
+		case "-":
+			outFile = os.Stdout
+			textColor = true
+		default:
+			outFile, err = os.OpenFile(out, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			textColor = false
+			if err != nil {
+				return nil, err
 			}
 		}
 	}
 
-	// Out file
-	log.Out = os.Stdout
-	if out, ok := config["out"]; ok {
-		switch out {
-		case "-":
-			log.Out = os.Stdout
+	format := "text"
+	if f, ok := config["format"]; ok {
+		f = strings.ToLower(f)
+		if f == "text" || f == "json" {
+			format = f
+		} else {
+			return nil, fmt.Errorf("unknown log format %#v, expected 'text' or 'json'", f)
+		}
+	}
+	if format == "text" {
+		outFile = zerolog.ConsoleWriter{
+			Out:     outFile,
+			NoColor: !textColor,
 		}
 	}
 
-	// Log level
-	log.Level = logrus.WarnLevel
-	if level, ok := config["level"]; ok {
-		switch strings.ToLower(level) {
-		case "warn":
-			log.Level = logrus.WarnLevel
-		case "info":
-			log.Level = logrus.InfoLevel
-		case "error":
-			log.Level = logrus.ErrorLevel
-		case "debug":
-			log.Level = logrus.DebugLevel
-		case "fatal":
-			log.Level = logrus.FatalLevel
-		default:
-			return nil, fmt.Errorf("unknown logging level: %#v", level)
+	level := zerolog.WarnLevel
+	if l, ok := config["level"]; ok {
+		l = strings.ToLower(l)
+		level, err = zerolog.ParseLevel(l)
+		if err != nil {
+			return nil, err
 		}
 	}
 
 	return &LoggingPlugin{
-		log: log,
+		log: zerolog.New(outFile).Level(level).With().Timestamp().Logger(),
 	}, nil
 }
 
-func (l *LoggingPlugin) entry(context pggateway.LoggingContext) *logrus.Entry {
-	entry := logrus.NewEntry(l.log)
-	if context != nil {
-		entry = entry.WithFields((logrus.Fields)(context))
+func (l *LoggingPlugin) logMsg(e *zerolog.Event, context pggateway.LoggingContext, msg string, args ...interface{}) {
+	if !e.Enabled() {
+		return
 	}
-	return entry
+
+	if context != nil {
+		e = e.Fields(map[string]interface{}{"context": context})
+	}
+	e.Msgf(msg, args...)
 }
 
 func (l *LoggingPlugin) LogInfo(context pggateway.LoggingContext, msg string, args ...interface{}) {
-	l.entry(context).Infof(msg, args...)
+	l.logMsg(l.log.Info(), context, msg, args...)
 }
 
 func (l *LoggingPlugin) LogError(context pggateway.LoggingContext, msg string, args ...interface{}) {
-	l.entry(context).Errorf(msg, args...)
+	l.logMsg(l.log.Error(), context, msg, args...)
 }
 
 func (l *LoggingPlugin) LogDebug(context pggateway.LoggingContext, msg string, args ...interface{}) {
-	l.entry(context).Debugf(msg, args...)
+	l.logMsg(l.log.Debug(), context, msg, args...)
 }
 
 func (l *LoggingPlugin) LogFatal(context pggateway.LoggingContext, msg string, args ...interface{}) {
-	l.entry(context).Warnf(msg, args...)
+	l.logMsg(l.log.Fatal(), context, msg, args...)
 }
 
 func (l *LoggingPlugin) LogWarn(context pggateway.LoggingContext, msg string, args ...interface{}) {
-	l.entry(context).Warnf(msg, args...)
+	l.logMsg(l.log.Warn(), context, msg, args...)
 }
