@@ -13,6 +13,7 @@ import (
 	"github.com/c653labs/pggateway"
 	_ "github.com/c653labs/pggateway/plugins/cloudwatchlogs-logging"
 	_ "github.com/c653labs/pggateway/plugins/file-logging"
+	_ "github.com/c653labs/pggateway/plugins/iam-authentication"
 	_ "github.com/c653labs/pggateway/plugins/passthrough-authentication"
 )
 
