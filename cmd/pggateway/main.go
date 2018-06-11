@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/pprof"
+	"runtime/trace"
 
 	"github.com/c653labs/pggateway"
 	_ "github.com/c653labs/pggateway/plugins/cloudwatchlogs-logging"
@@ -18,15 +19,34 @@ import (
 var (
 	configFilename string
 	cpuProfile     string
+	traceFile      string
 )
 
 func init() {
 	flag.StringVar(&configFilename, "config", "pggateway.yaml", "config file to load")
 	flag.StringVar(&cpuProfile, "cpuprofile", "", "write cpu profile to file")
+	flag.StringVar(&traceFile, "trace", "", "write trace to file")
 }
 
 func main() {
 	flag.Parse()
+
+	if traceFile != "" {
+		f, err := os.Create(traceFile)
+		if err != nil {
+			log.Fatalf("failed to create trace output file: %v", err)
+		}
+		defer func() {
+			if err := f.Close(); err != nil {
+				log.Fatalf("failed to close trace file: %v", err)
+			}
+		}()
+
+		if err := trace.Start(f); err != nil {
+			log.Fatalf("failed to start trace: %v", err)
+		}
+		defer trace.Stop()
+	}
 
 	if cpuProfile != "" {
 		f, err := os.Create(cpuProfile)
