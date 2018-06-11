@@ -36,9 +36,9 @@ type LoggingPlugin struct {
 	level  logLevel
 }
 
-func newLoggingPlugin(config map[string]string) (pggateway.LoggingPlugin, error) {
+func newLoggingPlugin(config pggateway.ConfigMap) (pggateway.LoggingPlugin, error) {
 	options := session.Options{}
-	region, ok := config["region"]
+	region, ok := config.String("region")
 	if ok {
 		options.Config = aws.Config{Region: aws.String(region)}
 	}
@@ -48,29 +48,28 @@ func newLoggingPlugin(config map[string]string) (pggateway.LoggingPlugin, error)
 
 	// Log level
 	level := LevelWarn
-	if l, ok := config["level"]; ok {
-		switch strings.ToLower(l) {
-		case "warn":
-			level = LevelWarn
-		case "info":
-			level = LevelInfo
-		case "error":
-			level = LevelError
-		case "debug":
-			level = LevelDebug
-		case "fatal":
-			level = LevelFatal
-		default:
-			return nil, fmt.Errorf("unknown logging level: %#v", level)
-		}
+	l := config.StringDefault("level", "warn")
+	switch strings.ToLower(l) {
+	case "warn":
+		level = LevelWarn
+	case "info":
+		level = LevelInfo
+	case "error":
+		level = LevelError
+	case "debug":
+		level = LevelDebug
+	case "fatal":
+		level = LevelFatal
+	default:
+		return nil, fmt.Errorf("unknown logging level: %#v", level)
 	}
 
-	group, ok := config["group"]
+	group, ok := config.String("group")
 	if !ok {
 		return nil, fmt.Errorf("must supply 'group' parameter")
 	}
 
-	stream, ok := config["stream"]
+	stream, ok := config.String("stream")
 	if !ok {
 		return nil, fmt.Errorf("must supply 'stream' parameter")
 	}

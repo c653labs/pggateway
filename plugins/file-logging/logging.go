@@ -19,35 +19,30 @@ type LoggingPlugin struct {
 	log zerolog.Logger
 }
 
-func newLoggingPlugin(config map[string]string) (pggateway.LoggingPlugin, error) {
+func newLoggingPlugin(config pggateway.ConfigMap) (pggateway.LoggingPlugin, error) {
 	var err error
 
 	var outFile io.Writer
 	outFile = os.Stdout
 	textColor := true
-	if out, ok := config["out"]; ok {
-		switch out {
-		case "-":
-			outFile = os.Stdout
-			textColor = true
-		default:
-			outFile, err = os.OpenFile(out, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-			textColor = false
-			if err != nil {
-				return nil, err
-			}
+	out := config.StringDefault("out", "-")
+	switch out {
+	case "-":
+		outFile = os.Stdout
+		textColor = true
+	default:
+		outFile, err = os.OpenFile(out, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		textColor = false
+		if err != nil {
+			return nil, err
 		}
 	}
 
-	format := "json"
-	if f, ok := config["format"]; ok {
-		f = strings.ToLower(f)
-		if f == "text" || f == "json" {
-			format = f
-		} else {
-			return nil, fmt.Errorf("unknown log format %#v, expected 'text' or 'json'", f)
-		}
+	format := strings.ToLower(config.StringDefault("format", "json"))
+	if format != "text" && format != "json" {
+		return nil, fmt.Errorf("unknown log format %#v, expected 'text' or 'json'", format)
 	}
+
 	if format == "text" {
 		outFile = zerolog.ConsoleWriter{
 			Out:     outFile,
@@ -56,12 +51,11 @@ func newLoggingPlugin(config map[string]string) (pggateway.LoggingPlugin, error)
 	}
 
 	level := zerolog.WarnLevel
-	if l, ok := config["level"]; ok {
-		l = strings.ToLower(l)
-		level, err = zerolog.ParseLevel(l)
-		if err != nil {
-			return nil, err
-		}
+	l := config.StringDefault("level", "warn")
+	l = strings.ToLower(l)
+	level, err = zerolog.ParseLevel(l)
+	if err != nil {
+		return nil, err
 	}
 
 	return &LoggingPlugin{

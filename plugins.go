@@ -10,8 +10,8 @@ import (
 var authPlugins = make(map[string]authPluginInitializer)
 var loggingPlugins = make(map[string]loggingPluginInitializer)
 
-type authPluginInitializer func(map[string]string) (AuthenticationPlugin, error)
-type loggingPluginInitializer func(map[string]string) (LoggingPlugin, error)
+type authPluginInitializer func(ConfigMap) (AuthenticationPlugin, error)
+type loggingPluginInitializer func(ConfigMap) (LoggingPlugin, error)
 
 type Plugin interface{}
 
@@ -35,7 +35,7 @@ func RegisterAuthPlugin(name string, init authPluginInitializer) {
 	authPlugins[name] = init
 }
 
-func RegisterLoggingPlugin(name string, init func(map[string]string) (LoggingPlugin, error)) {
+func RegisterLoggingPlugin(name string, init func(ConfigMap) (LoggingPlugin, error)) {
 	loggingPlugins[name] = init
 }
 
@@ -52,7 +52,7 @@ type PluginRegistry struct {
 	logMutex       *sync.Mutex
 }
 
-func NewPluginRegistry(auth map[string]map[string]string, logging map[string]map[string]string) (*PluginRegistry, error) {
+func NewPluginRegistry(auth map[string]ConfigMap, logging map[string]ConfigMap) (*PluginRegistry, error) {
 	r := &PluginRegistry{
 		authPlugins:    make(map[string]AuthenticationPlugin),
 		loggingPlugins: make(map[string]LoggingPlugin),

@@ -5,9 +5,9 @@ import (
 )
 
 type Config struct {
-	Procs     int                          `yaml:"procs,omitempty"`
-	Logging   map[string]map[string]string `yaml:"logging,omitempty"`
-	Listeners map[string]*ListenerConfig   `yaml:"listeners,omitempty"`
+	Procs     int                        `yaml:"procs,omitempty"`
+	Logging   map[string]ConfigMap       `yaml:"logging,omitempty"`
+	Listeners map[string]*ListenerConfig `yaml:"listeners,omitempty"`
 }
 
 type TargetConfig struct {
@@ -23,18 +23,83 @@ type SSLConfig struct {
 	Key         string `yaml:"key,omitempty"`
 }
 
+type ConfigMap map[string]interface{}
+
+func (c ConfigMap) String(name string) (string, bool) {
+	v, ok := c[name]
+	if !ok {
+		return "", false
+	}
+
+	s, ok := v.(string)
+	if !ok {
+		return "", false
+	}
+	return s, true
+}
+
+func (c ConfigMap) StringDefault(name string, d string) string {
+	s, ok := c.String(name)
+	if !ok {
+		return d
+	}
+	return s
+}
+
+func (c ConfigMap) Bool(name string) (bool, bool) {
+	v, ok := c[name]
+	if !ok {
+		return false, false
+	}
+
+	b, ok := v.(bool)
+	if !ok {
+		return false, false
+	}
+	return b, true
+}
+
+func (c ConfigMap) BoolDefault(name string, d bool) bool {
+	b, ok := c.Bool(name)
+	if !ok {
+		return d
+	}
+	return b
+}
+
+func (c ConfigMap) Map(name string) (ConfigMap, bool) {
+	raw, ok := c[name]
+	if !ok {
+		return nil, false
+	}
+	value, ok := raw.(map[interface{}]interface{})
+	if !ok {
+		return nil, false
+	}
+
+	m := make(ConfigMap)
+	for k, v := range value {
+		key, ok := k.(string)
+		if !ok {
+			return nil, false
+		}
+		m[key] = v
+	}
+	return m, true
+}
+
 type ListenerConfig struct {
-	Bind           string                       `yaml:"bind,omitempty"`
-	SSL            SSLConfig                    `yaml:"ssl,omitempty"`
-	Target         TargetConfig                 `yaml:"target,omitempty"`
-	Authentication map[string]map[string]string `yaml:"authentication,omitempty"`
-	Logging        map[string]map[string]string `yaml:"logging,omitempty"`
-	Databases      map[string]map[string]string `yaml:"databases,omitempty"`
+	Bind           string               `yaml:"bind,omitempty"`
+	SSL            SSLConfig            `yaml:"ssl,omitempty"`
+	Target         TargetConfig         `yaml:"target,omitempty"`
+	Authentication map[string]ConfigMap `yaml:"authentication,omitempty"`
+	Logging        map[string]ConfigMap `yaml:"logging,omitempty"`
+	Databases      map[string]ConfigMap `yaml:"databases,omitempty"`
 }
 
 func NewConfig() *Config {
 	return &Config{
-		Logging:   make(map[string]map[string]string),
+		Logging:   make(map[string]ConfigMap),
 		Listeners: make(map[string]*ListenerConfig),
 	}
 }
