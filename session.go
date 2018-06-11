@@ -249,6 +249,8 @@ func (s *Session) loggingContext() LoggingContext {
 
 func (s *Session) loggingContextWithMessage(msg pgproto.Message) LoggingContext {
 	context := s.loggingContext()
-	context["message"] = msg.AsMap()
+	if msg != nil {
+		context["message"] = msg.AsMap()
+	}
 	return context
 }
