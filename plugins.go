@@ -2,6 +2,7 @@ package pggateway
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/c653labs/pgproto"
 )
@@ -48,14 +49,14 @@ type loggingMessage struct {
 type PluginRegistry struct {
 	authPlugins    map[string]AuthenticationPlugin
 	loggingPlugins map[string]LoggingPlugin
-	log            chan loggingMessage
+	logMutex       *sync.Mutex
 }
 
 func NewPluginRegistry(auth map[string]map[string]string, logging map[string]map[string]string) (*PluginRegistry, error) {
 	r := &PluginRegistry{
 		authPlugins:    make(map[string]AuthenticationPlugin),
 		loggingPlugins: make(map[string]LoggingPlugin),
-		log:            make(chan loggingMessage),
+		logMutex:       &sync.Mutex{},
 	}
 
 	for name, config := range auth {
@@ -84,30 +85,26 @@ func NewPluginRegistry(auth map[string]map[string]string, logging map[string]map
 		r.loggingPlugins[name] = p
 	}
 
-	// Go routine to handle writing log messages
-	go r.handleLogging()
-
 	return r, nil
 }
 
-func (r *PluginRegistry) handleLogging() {
-	for {
-		msg := <-r.log
-		for _, p := range r.loggingPlugins {
-			switch msg.level {
-			case "info":
-				p.LogInfo(msg.context, msg.msg, msg.args...)
-			case "debug":
-				p.LogDebug(msg.context, msg.msg, msg.args...)
-			case "warn":
-				p.LogWarn(msg.context, msg.msg, msg.args...)
-			case "error":
-				p.LogError(msg.context, msg.msg, msg.args...)
-			case "fatal":
-				p.LogFatal(msg.context, msg.msg, msg.args...)
-			}
+func (r *PluginRegistry) handleLog(msg loggingMessage) {
+	r.logMutex.Lock()
+	for _, p := range r.loggingPlugins {
+		switch msg.level {
+		case "info":
+			p.LogInfo(msg.context, msg.msg, msg.args...)
+		case "debug":
+			p.LogDebug(msg.context, msg.msg, msg.args...)
+		case "warn":
+			p.LogWarn(msg.context, msg.msg, msg.args...)
+		case "error":
+			p.LogError(msg.context, msg.msg, msg.args...)
+		case "fatal":
+			p.LogFatal(msg.context, msg.msg, msg.args...)
 		}
 	}
+	r.logMutex.Unlock()
 }
 
 func (r *PluginRegistry) Authenticate(sess *Session, startup *pgproto.StartupMessage) (bool, error) {
@@ -125,46 +122,46 @@ func (r *PluginRegistry) Authenticate(sess *Session, startup *pgproto.StartupMes
 }
 
 func (r *PluginRegistry) LogInfo(context LoggingContext, msg string, args ...interface{}) {
-	r.log <- loggingMessage{
+	r.handleLog(loggingMessage{
 		level:   "info",
 		context: context,
 		msg:     msg,
 		args:    args,
-	}
+	})
 }
 
 func (r *PluginRegistry) LogError(context LoggingContext, msg string, args ...interface{}) {
-	r.log <- loggingMessage{
+	r.handleLog(loggingMessage{
 		level:   "error",
 		context: context,
 		msg:     msg,
 		args:    args,
-	}
+	})
 }
 
 func (r *PluginRegistry) LogWarn(context LoggingContext, msg string, args ...interface{}) {
-	r.log <- loggingMessage{
+	r.handleLog(loggingMessage{
 		level:   "warn",
 		context: context,
 		msg:     msg,
 		args:    args,
-	}
+	})
 }
 
 func (r *PluginRegistry) LogDebug(context LoggingContext, msg string, args ...interface{}) {
-	r.log <- loggingMessage{
+	r.handleLog(loggingMessage{
 		level:   "debug",
 		context: context,
 		msg:     msg,
 		args:    args,
-	}
+	})
 }
 
 func (r *PluginRegistry) LogFatal(context LoggingContext, msg string, args ...interface{}) {
-	r.log <- loggingMessage{
+	r.handleLog(loggingMessage{
 		level:   "fatal",
 		context: context,
 		msg:     msg,
 		args:    args,
-	}
+	})
 }
