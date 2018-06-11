@@ -39,7 +39,7 @@ func newLoggingPlugin(config map[string]string) (pggateway.LoggingPlugin, error)
 		}
 	}
 
-	format := "text"
+	format := "json"
 	if f, ok := config["format"]; ok {
 		f = strings.ToLower(f)
 		if f == "text" || f == "json" {
