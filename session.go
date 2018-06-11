@@ -76,9 +76,9 @@ func (s *Session) Handle() error {
 	return s.proxy()
 }
 
-func (s *Session) GetUserPassword() (*pgproto.AuthenticationRequest, *pgproto.PasswordMessage, error) {
+func (s *Session) GetUserPassword(method pgproto.AuthenticationMethod) (*pgproto.AuthenticationRequest, *pgproto.PasswordMessage, error) {
 	auth := &pgproto.AuthenticationRequest{
-		Method: pgproto.AuthenticationMethodMD5,
+		Method: method,
 		Salt:   s.salt,
 	}
 	err := s.WriteToClient(auth)
