@@ -215,7 +215,7 @@ func (s *Session) ParseClientRequest() (pgproto.ClientMessage, error) {
 			s.plugins.LogError(s.loggingContextWithMessage(msg), "error parsing client request: %s", err)
 		}
 	} else {
-		s.plugins.LogInfo(s.loggingContextWithMessage(msg), "client request")
+		s.plugins.LogDebug(s.loggingContextWithMessage(msg), "client request")
 	}
 	return msg, err
 }
@@ -231,7 +231,7 @@ func (s *Session) ParseServerResponse() (pgproto.ServerMessage, error) {
 			s.plugins.LogError(s.loggingContextWithMessage(msg), "error parsing server response: %#v", err)
 		}
 	} else {
-		s.plugins.LogInfo(s.loggingContextWithMessage(msg), "server response")
+		s.plugins.LogDebug(s.loggingContextWithMessage(msg), "server response")
 	}
 	return msg, err
 }
