@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 
 	"github.com/c653labs/pgproto"
 	uuid "github.com/satori/go.uuid"
@@ -128,33 +129,44 @@ func (s *Session) parseStartupMessage() (*pgproto.StartupMessage, error) {
 }
 
 func (s *Session) proxy() error {
-	stop := make(chan error)
-	go s.proxyClientMessages(stop)
-	go s.proxyServerMessages(stop)
+	m := &sync.Mutex{}
+	stop := sync.NewCond(m)
+	errs := make([]error, 0)
+
+	go s.proxyClientMessages(stop, errs)
+	go s.proxyServerMessages(stop, errs)
 
 	// Disable message interception
-	// go func(stop chan error) {
+	// go func() {
 	//	_, err := io.Copy(s.client, s.target)
-	//	stop <- err
-	// }(stop)
+	//	errs = append(errs, err)
+	//	stop.Broadcast()
+	// }()
 
-	// go func(stop chan error) {
+	// go func() {
 	//	_, err := io.Copy(s.target, s.client)
-	//	stop <- err
-	// }(stop)
+	//	errs = append(errs, err)
+	//	stop.Broadcast()
+	// }()
 
-	err := <-stop
+	stop.L.Lock()
+	stop.Wait()
+	stop.L.Unlock()
 	s.stopped = true
 
-	return err
+	if len(errs) > 0 {
+		return errs[0]
+	}
+	return nil
 }
 
-func (s *Session) proxyServerMessages(stop chan error) {
+func (s *Session) proxyServerMessages(stop *sync.Cond, errs []error) {
 	var buf []pgproto.Message
 	for !s.stopped {
 		msg, err := s.ParseServerResponse()
 		if err != nil {
-			stop <- err
+			errs = append(errs, err)
+			stop.Broadcast()
 			break
 		}
 		buf = append(buf, msg)
@@ -174,14 +186,14 @@ func (s *Session) proxyServerMessages(stop chan error) {
 	if len(buf) > 0 {
 		pgproto.WriteMessages(buf, s.client)
 	}
-	stop <- nil
 }
 
-func (s *Session) proxyClientMessages(stop chan error) {
+func (s *Session) proxyClientMessages(stop *sync.Cond, errs []error) {
 	for !s.stopped {
 		msg, err := s.ParseClientRequest()
 		if err != nil {
-			stop <- err
+			errs = append(errs, err)
+			stop.Broadcast()
 			break
 		}
 
@@ -191,7 +203,6 @@ func (s *Session) proxyClientMessages(stop chan error) {
 			break
 		}
 	}
-	stop <- nil
 }
 
 func (s *Session) WriteToServer(msg pgproto.ClientMessage) error {
