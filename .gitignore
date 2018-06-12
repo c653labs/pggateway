@@ -1,3 +1,6 @@
 pggateway
 *.crt
 *.key
+*.yaml
+*.pprof
+*.out
