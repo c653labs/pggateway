@@ -4,3 +4,4 @@ pggateway
 *.yaml
 *.pprof
 *.out
+.idea

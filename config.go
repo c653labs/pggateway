@@ -1,21 +1,26 @@
 package pggateway
 
 import (
-	"github.com/go-yaml/yaml"
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	Procs     int                        `yaml:"procs,omitempty"`
-	Logging   map[string]ConfigMap       `yaml:"logging,omitempty"`
-	Listeners map[string]*ListenerConfig `yaml:"listeners,omitempty"`
+	Procs     int                  `yaml:"procs,omitempty"`
+	Logging   map[string]ConfigMap `yaml:"logging,omitempty"`
+	Listeners []*ListenerConfig    `yaml:"listeners,omitempty"`
 }
 
+// TargetConfig
 type TargetConfig struct {
-	Host    string `yaml:"host,omitempty"`
-	Port    int    `yaml:"port,omitempty"`
-	SSLMode string `yaml:"sslmode,omitempty"`
+	Host      string   `yaml:"host,omitempty"`
+	Port      int      `yaml:"port,omitempty"`
+	SSLMode   string   `yaml:"sslmode,omitempty"`
+	User      string   `yaml:"user,omitempty"`
+	Password  string   `yaml:"password,omitempty"`
+	Databases []string `yaml:"databases,omitempty"`
 }
 
+// SSLConfig
 type SSLConfig struct {
 	Enabled     bool   `yaml:"enabled,omitempty"`
 	Required    bool   `yaml:"required,omitempty"`
@@ -88,37 +93,22 @@ func (c ConfigMap) Map(name string) (ConfigMap, bool) {
 	return m, true
 }
 
+// ListenerConfig
 type ListenerConfig struct {
-	Bind           string               `yaml:"bind,omitempty"`
-	SSL            SSLConfig            `yaml:"ssl,omitempty"`
-	Target         TargetConfig         `yaml:"target,omitempty"`
-	Authentication map[string]ConfigMap `yaml:"authentication,omitempty"`
-	Logging        map[string]ConfigMap `yaml:"logging,omitempty"`
-	Databases      map[string]ConfigMap `yaml:"databases,omitempty"`
+	Bind           string                 `yaml:"bind,omitempty"`
+	SSL            SSLConfig              `yaml:"ssl,omitempty"`
+	Authentication map[string]interface{} `yaml:"authentication,omitempty"`
+	Logging        map[string]ConfigMap   `yaml:"logging,omitempty"`
 }
 
 func NewConfig() *Config {
 	return &Config{
-		Logging:   make(map[string]ConfigMap),
-		Listeners: make(map[string]*ListenerConfig),
+		Logging: make(map[string]ConfigMap),
 	}
 }
 
 func (c *Config) Unmarshal(in []byte) error {
-	err := yaml.UnmarshalStrict(in, c)
-	if err != nil {
-		return err
-	}
-
-	return c.resolveListeners()
-}
-
-func (c *Config) resolveListeners() error {
-	for bind, config := range c.Listeners {
-		config.Bind = bind
-	}
-
-	return nil
+	return yaml.Unmarshal(in, c)
 }
 
 func (c *Config) GetListeners() []*Listener {
