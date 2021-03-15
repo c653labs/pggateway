@@ -177,7 +177,7 @@ Example usage:
 
 ```yaml
 listeners:
-  ':5433':
+  - bind: ':5433'
     logging:
       # Write log entries to `my-log-group/my-log-stream` in the `us-east-1` region
       cloudwatchlogs:
@@ -201,13 +201,13 @@ Example usages:
 
 ```yaml
 listeners:
-  ':5433':
+  - bind: ':5433'
     logging:
       # Write log entries to /var/log/pggateway.log
       file:
         level: 'info'
         out: '/var/log/pggateway.log'
-  ':5434':
+  - bind: ':5434'
     logging:
       # Write log entries formatted as JSON to stdout
       file:
