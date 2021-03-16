@@ -14,3 +14,6 @@ run:
 debug:
 	dlv debug cmd/pggateway/main.go
 .PHONY: debug
+
+test:
+	@go test -v  ./...

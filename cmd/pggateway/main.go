@@ -15,6 +15,7 @@ import (
 	_ "github.com/c653labs/pggateway/plugins/file-logging"
 	_ "github.com/c653labs/pggateway/plugins/iam-authentication"
 	_ "github.com/c653labs/pggateway/plugins/passthrough-authentication"
+	_ "github.com/c653labs/pggateway/plugins/virtualuser-authentication"
 )
 
 var (

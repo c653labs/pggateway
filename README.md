@@ -1,4 +1,5 @@
 # PGGateway
+
 [![GoDoc](https://godoc.org/github.com/c653labs/pggateway?status.svg)](https://godoc.org/github.com/c653labs/pggateway)
 
 **Note:** This project is still under active development and is not quite ready for prime time yet.
@@ -6,6 +7,7 @@
 PGGateway is a PostgreSQL proxy service that allows you to use custom authentication and request logging plugins.
 
 ## Building
+
 ```bash
 # clone
 git clone git://github.com/c653labs/pggateway
@@ -19,6 +21,7 @@ CGO_ENABLED=0 go build -o pggateway -a -ldflags "-s -w" cmd/pggateway/main.go
 ```
 
 ## Running
+
 ```
 $ pggateway -help
 Usage of pggateway:
@@ -71,6 +74,7 @@ INFO[2018-04-15T08:44:46-04:00] client session end                            cl
 </details>
 
 ## Configuration file
+
 Basic example, proxying requests for any database from `127.0.0.1:5433` to `127.0.0.1:5432`.
 
 ```yaml
@@ -82,35 +86,35 @@ logging:
 
 listeners:
   # Listen for requests on port `5433`
-  '127.0.0.1:5433':
-    # PostgreSQL server to forward requests to
-    target:
-      host: '127.0.0.1'
-      port: 5432
-
+  - bind: '127.0.0.1:5433'
     # Pass all authentication along to the target server
     authentication:
       passthrough:
-
+        # PostgreSQL server to forward requests to
+        target:
+          host: '127.0.0.1'
+          port: 5432
+          # Databases we will accept requests for,
+          # empty list matching any database
+          databases:
+            - "test"
     # Log messages from this listener to stdout
     logging:
       file:
         level: 'info'
         out: '-'
-
-    # Databases we will accept requests for,
-    #   '*' is a special case matching any database
-    databases:
-      '*':
 ```
 
 ## Plugins
+
 Authentication and logging plugins can be configured on a per-listener basis.
 
 ### Authentication
+
 The following are the available built-in authentication plugins.
 
 #### Passthrough
+
 Passthrough authentication forwards all authentication requests to the target server.
 
 There are no configuration options for `passthrough` authentication plugin.
@@ -119,13 +123,45 @@ Example usage:
 
 ```yaml
 listeners:
-  ':5433':
+  - bind: ':5433'
     authentication:
       passthrough:
 ```
 
+#### VirtualUser
+
+Example usage:
+
+```yaml
+  - bind: ':5433'
+    authentication:
+      virtualuser-authentication:
+        - name: 'host1'
+          users:
+            host1user0: 'pass0' # plaintext password
+            host1user1: 'md5eb93956e0e5654c7bacc18531f2b2982' # md5 hashed password
+          target:
+            host: '127.0.0.1'
+            port: 5432
+            user: 'test'
+            password: 'test'
+            databases:
+              - "test"
+              - "stats"
+        - name: 'host2'
+          users:
+            host2user3: 'SCRAM-SHA-256$4096:GLBU5JUuBLn0t6gh8SurcA==$lvLKVbiO0LBbj7fU7sGVa61Hy/QjOnOyz9N+qsTaIEQ=:9rO0gSuecLXGw6ArRS6PfK49YCo3iYgGKtDAR36wK5E=' # scram secret for `pggateway` password
+          target:
+            host: '127.0.0.2'
+            port: 2345
+            user: 'test2'
+            password: 'test2'
+```
+
 ### Logging
+
 #### CloudWatch logs
+
 CloudWatch logs plugin will write log entries to a CloudWatch log group and stream.
 
 Configuration options:
@@ -141,7 +177,7 @@ Example usage:
 
 ```yaml
 listeners:
-  ':5433':
+  - bind: ':5433'
     logging:
       # Write log entries to `my-log-group/my-log-stream` in the `us-east-1` region
       cloudwatchlogs:
@@ -152,6 +188,7 @@ listeners:
 ```
 
 #### File
+
 File logging writes log entries to a file or `stdout`.
 
 Configuration options:
@@ -164,13 +201,13 @@ Example usages:
 
 ```yaml
 listeners:
-  ':5433':
+  - bind: ':5433'
     logging:
       # Write log entries to /var/log/pggateway.log
       file:
         level: 'info'
         out: '/var/log/pggateway.log'
-  ':5434':
+  - bind: ':5434'
     logging:
       # Write log entries formatted as JSON to stdout
       file:
